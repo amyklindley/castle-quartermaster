@@ -86,21 +86,47 @@ async def setup_hook() -> None:
     client.add_view(ui.Panel())
     client.add_view(ui.Controls())
     tree.add_command(tickets)
-    guild_id = os.environ.get("GUILD_ID")
-    if guild_id:
-        g = discord.Object(id=int(guild_id))
-        tree.copy_global_to(guild=g)
+    ids = guild_ids()
+    if ids:
+        # Commands registered per server show up instantly (global ones can lag), so register them only
+        # in the servers listed in GUILD_ID and clear any old global copies.
+        for gid in ids:
+            tree.copy_global_to(guild=discord.Object(id=gid))
         tree.clear_commands(guild=None)
-        await tree.sync(guild=g)
-        await tree.sync()  # clears any old global copies
+        await tree.sync()
+        for gid in ids:
+            await sync_guild(gid)
     else:
         await tree.sync()
     client.loop.create_task(housekeeping())
 
 
+def guild_ids() -> list[int]:
+    """GUILD_ID from .env: one server id, or several separated by commas (e.g. a test server and the real one)."""
+    return [int(x) for x in os.environ.get("GUILD_ID", "").replace(" ", "").split(",") if x.isdigit()]
+
+
+async def sync_guild(gid: int) -> None:
+    try:
+        await tree.sync(guild=discord.Object(id=gid))
+    except discord.Forbidden:
+        log.info("not in server %s yet; its commands will register when the bot is invited", gid)
+
+
+@client.event
+async def on_guild_join(guild: discord.Guild) -> None:
+    log.info("joined %s (%s)", guild.name, guild.id)
+    if guild.id in guild_ids():
+        await sync_guild(guild.id)
+    else:
+        log.warning("%s isn't in GUILD_ID in .env, so /craft, /gather and /tickets won't show up there. "
+                    "Add its id (comma-separated) and restart.", guild.id)
+
+
 @client.event
 async def on_ready() -> None:
-    log.info("ready as %s in %d server(s)", client.user, len(client.guilds))
+    log.info("ready as %s in %d server(s): %s", client.user, len(client.guilds),
+             ", ".join(f"{g.name} ({g.id})" for g in client.guilds))
 
 
 # ---------------------------------------------------------------- /tickets setup
