@@ -1,4 +1,4 @@
-# Castle Tickets: setup for a server admin
+# Castle Quartermaster: setup for a server admin
 
 About 10 minutes. You need the **Manage Server** permission. The bot is already written and running;
 this just lets it into the server and tells it where to post.
@@ -21,9 +21,9 @@ banning, and no reading of messages. *Manage Threads* is how it pins the panel a
 2. Edit Channel → **Permissions**:
    - **@everyone**: turn **off** *Create Posts* and leave *Send Messages in Posts* **on**. Members can
      talk in any ticket, but new tickets only come from the bot's forms, so they all have the same fields.
-   - Add the **Castle Tickets** role and turn **on** *Create Posts*, *Send Messages in Posts*, *Manage Threads*,
+   - Add the **Castle Quartermaster** role and turn **on** *Create Posts*, *Send Messages in Posts*, *Manage Threads*,
      *Embed Links*, *Attach Files*.
-   - Optional: also give the Castle Tickets role **Manage Channel** *on this forum only*. That lets it create the
+   - Optional: also give the Castle Quartermaster role **Manage Channel** *on this forum only*. That lets it create the
      8 forum tags for you (Crafting, Gathering, Bank Donation, Bank Request, Open, Claimed, Done, Cancelled).
      If you'd rather not, create those tags yourself under Edit Channel → Tags. The names have to match.
      Tickets still work without tags; the tags just make the list easy to filter.
@@ -58,4 +58,4 @@ run the same command again (it's safe to re-run any time, e.g. to change a role)
 | `/tickets queue [kind]` | anyone | Everything open, optionally just one kind |
 
 Only admins see `/tickets setup` by default. You can change who sees what under Server Settings →
-Integrations → Castle Tickets.
+Integrations → Castle Quartermaster.

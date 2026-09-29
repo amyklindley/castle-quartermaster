@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# One-shot install of Castle Tickets on a Debian/Ubuntu box. Fine to run on the same Google Cloud VM as
+# One-shot install of Castle Quartermaster on a Debian/Ubuntu box. Fine to run on the same Google Cloud VM as
 # Mo Betta Bot: it gets its own folder, its own service and its own token.
 #
-#   curl -fsSL https://raw.githubusercontent.com/amyklindley/castle-tickets/main/deploy.sh -o deploy.sh && bash deploy.sh
+#   curl -fsSL https://raw.githubusercontent.com/amyklindley/castle-quartermaster/main/deploy.sh -o deploy.sh && bash deploy.sh
 #
-# What it does: installs Python + git, clones the repo to /opt/castle-tickets, creates a virtualenv, asks for the
+# What it does: installs Python + git, clones the repo to /opt/castle-quartermaster, creates a virtualenv, asks for the
 # Discord token and server id once, and installs a systemd service that starts the bot on boot and restarts it
 # if it ever dies. Safe to re-run: it updates the code and restarts the service. The ticket database
 # (tickets.db) lives in that folder and is never touched by updates.
 set -euo pipefail
 
-REPO="https://github.com/amyklindley/castle-tickets"
-DIR="/opt/castle-tickets"
-SVC="castle-tickets"
+REPO="https://github.com/amyklindley/castle-quartermaster"
+DIR="/opt/castle-quartermaster"
+SVC="castle-quartermaster"
 USER_NAME="${SUDO_USER:-$USER}"
 
-echo "== Castle Tickets installer =="
+echo "== Castle Quartermaster installer =="
 if [ -n "${CLOUD_SHELL:-}" ] || [ -n "${DEVSHELL_PROJECT_ID:-}" ]; then
   echo "This is Google Cloud Shell, which is wiped when you close it. Run this on the VM instead:"
   echo "Compute Engine -> VM instances -> SSH button on your instance, then paste the command there."
@@ -41,7 +41,7 @@ sudo -u "$USER_NAME" "$DIR/.venv/bin/pip" install -q -r "$DIR/requirements.txt"
 
 if [ ! -f "$DIR/.env" ]; then
   echo
-  echo "Paste the Castle Tickets bot token from https://discord.com/developers/applications (Bot -> Reset Token)."
+  echo "Paste the Castle Quartermaster bot token from https://discord.com/developers/applications (Bot -> Reset Token)."
   echo "This is a different bot from Mo Betta, so it's a different token. Nothing shows while you paste; press Enter."
   read -r -s -p "DISCORD_TOKEN: " TOKEN </dev/tty
   echo
@@ -53,7 +53,7 @@ fi
 echo "-- systemd service"
 sudo tee /etc/systemd/system/$SVC.service >/dev/null <<UNIT
 [Unit]
-Description=Castle Tickets (crafting, gathering and guild bank requests)
+Description=Castle Quartermaster (crafting, gathering and guild bank requests)
 After=network-online.target
 Wants=network-online.target
 

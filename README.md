@@ -1,4 +1,4 @@
-# Castle Tickets
+# Castle Quartermaster
 
 A Discord bot for the guild's crafting, gathering and guild bank requests. Members press a button, fill in
 a short form, and the bot opens a post in a requests forum and pings the people who handle it. Staff
@@ -34,17 +34,17 @@ Other touches:
 
 ## Setup
 
-1. **Create the bot**: <https://discord.com/developers/applications> → **New Application** ("Castle Tickets") →
+1. **Create the bot**: <https://discord.com/developers/applications> → **New Application** ("Castle Quartermaster") →
    **Bot** → **Reset Token**, copy it. No privileged intents needed. Copy the **Application ID** from
    General Information too.
 2. **Send the server admin [ADMIN-SETUP.md](ADMIN-SETUP.md)** with `<CLIENT_ID>` replaced by the Application ID.
    They invite the bot, make the forum, and run `/tickets setup`.
 3. **Run it** on the Google Cloud VM alongside Mo Betta Bot (SSH into the VM, then):
    ```
-   curl -fsSL https://raw.githubusercontent.com/amyklindley/castle-tickets/main/deploy.sh -o deploy.sh && bash deploy.sh
+   curl -fsSL https://raw.githubusercontent.com/amyklindley/castle-quartermaster/main/deploy.sh -o deploy.sh && bash deploy.sh
    ```
-   It asks for the token and the server id once. It installs to `/opt/castle-tickets` as its own service
-   (`castle-tickets`), separate from Mo Betta. Logs: `sudo journalctl -u castle-tickets -f`. It's about the
+   It asks for the token and the server id once. It installs to `/opt/castle-quartermaster` as its own service
+   (`castle-quartermaster`), separate from Mo Betta. Logs: `sudo journalctl -u castle-quartermaster -f`. It's about the
    same size as Mo Betta, so the free e2-micro can run both.
 
 To run it on this PC instead (for testing): `python -m venv .venv`, `.venv\Scripts\pip install -r requirements.txt`,

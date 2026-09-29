@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Castle Tickets: crafting, gathering and guild bank requests as forum posts.
+"""Castle Quartermaster: the guild's crafting, gathering and guild bank requests, as forum posts.
 
 Setup (once):
   1. https://discord.com/developers/applications -> New Application -> Bot -> Reset Token, copy it.
