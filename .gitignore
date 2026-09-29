@@ -1,0 +1,9 @@
+# secrets
+.env
+
+# the live ticket database and downloaded recipe data
+tickets.db
+data/
+__pycache__/
+.venv/
+*.log
