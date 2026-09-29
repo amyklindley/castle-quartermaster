@@ -5,6 +5,8 @@ Writes icon.svg, then renders icon.png (1024x1024) with headless Edge.  python a
 from __future__ import annotations
 
 import subprocess
+import tempfile
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -72,16 +74,60 @@ def svg() -> str:
 </svg>"""
 
 
-def main() -> None:
-    out_svg, out_png = HERE / "icon.svg", HERE / "icon.png"
-    out_svg.write_text(svg(), "utf-8")
+def banner() -> str:
+    """Profile banner, 1360x480 (2x Discord's 680x240). Discord puts the avatar over the bottom-left
+    corner, so that corner only gets hills; the words sit up top and the castle bottom-right."""
+    w, h = 1360, 480
+    stars = "".join(f'<circle cx="{(i * 397) % w}" cy="{(i * 151) % 300 + 12}" r="{1.5 + (i % 3)}" '
+                    f'fill="{CREAM}" opacity="{0.35 + (i % 4) * 0.15:.2f}"/>' for i in range(1, 46))
+    hills_back = f'<path d="M0 {h} V400 Q180 350 380 392 T760 380 T1100 400 T{w} 385 V{h} Z" fill="{SHADOW}"/>'
+    # the castle stands on the far ridge; the near hill covers its footing
+    hills_front = f'<path d="M0 {h} V440 Q240 415 520 442 T1000 440 Q1180 430 {w} 445 V{h} Z" fill="{NAVY}"/>'
+    moon = (f'<mask id="bite"><rect width="{w}" height="{h}" fill="#fff"/><circle cx="1262" cy="84" r="50" fill="#000"/></mask>'
+            f'<circle cx="1240" cy="100" r="54" fill="{CREAM}" mask="url(#bite)"/>')
+    serif = 'font-family="Cinzel, Georgia, serif" text-anchor="middle"'
+    words = (f'<text x="660" y="112" {serif} font-weight="700" font-size="44" letter-spacing="22" fill="{GOLD}">CASTLE</text>'
+             f'<text x="660" y="210" {serif} font-weight="700" font-size="92" letter-spacing="4" fill="{CREAM}">QUARTERMASTER</text>'
+             f'<line x1="390" y1="240" x2="930" y2="240" stroke="{GOLD}" stroke-width="3" opacity=".7"/>'
+             f'<text x="660" y="290" {serif} font-weight="400" font-size="34" letter-spacing="6" fill="{GOLD}">'
+             f'Crafting · Gathering · Guild Bank</text>')
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="{w}" height="{h}">
+<style>@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&amp;display=block');</style>
+<defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="{SHADOW}"/><stop offset="1" stop-color="{INNER}"/></linearGradient></defs>
+<rect width="{w}" height="{h}" fill="url(#sky)"/>
+{stars}{moon}{hills_back}
+<g transform="translate(1010 170) scale(0.38)">{castle()}</g>
+{hills_front}
+{words}
+</svg>"""
+
+
+def render(name: str, markup: str, size: tuple[int, int]) -> Path:
+    (HERE / f"{name}.svg").write_text(markup, "utf-8")
+    out = HERE / f"{name}.png"
     html = HERE / "_render.html"
-    html.write_text(f'<html><body style="margin:0;background:#000">{svg()}</body></html>', "utf-8")
-    subprocess.run([EDGE, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--force-device-scale-factor=1",
-                    "--window-size=1024,1024", "--virtual-time-budget=5000", f"--screenshot={out_png}",
+    html.write_text(f'<html><body style="margin:0;background:#000">{markup}</body></html>', "utf-8")
+    out.unlink(missing_ok=True)
+    profile = tempfile.mkdtemp(prefix="edge-render-")  # a fresh profile, so a running Edge can't swallow the job
+    subprocess.run([EDGE, "--headless=new", f"--user-data-dir={profile}", "--disable-gpu", "--hide-scrollbars", "--force-device-scale-factor=1",
+                    f"--window-size={size[0]},{size[1]}", "--virtual-time-budget=5000", f"--screenshot={out}",
                     html.as_uri()], check=True, capture_output=True)
+    # msedge.exe hands the job to a background process and returns early, so wait for the file to land
+    for _ in range(60):
+        if out.exists() and out.stat().st_size > 0:
+            break
+        time.sleep(0.5)
+    else:
+        raise SystemExit(f"Edge didn't write {out}")
+    time.sleep(0.5)
     html.unlink()
-    print(out_png)
+    return out
+
+
+def main() -> None:
+    print(render("icon", svg(), (1024, 1024)))
+    print(render("banner", banner(), (1360, 480)))
 
 
 if __name__ == "__main__":
