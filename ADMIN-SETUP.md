@@ -54,6 +54,8 @@ run the same command again (it's safe to re-run any time, e.g. to change a role)
 | Command | Who | What |
 |---|---|---|
 | `/tickets setup` | Manage Server | Forum, roles, panel (see above) |
+| `/craft <item>` | anyone | Opens the crafting form; the item box searches the wiki's recipes as you type |
+| `/gather <item>` | anyone | Opens the gathering form; the item box searches crafting materials as you type |
 | `/tickets mine` | anyone | Your open requests |
 | `/tickets queue [kind]` | anyone | Everything open, optionally just one kind |
 

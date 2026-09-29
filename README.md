@@ -22,6 +22,9 @@ already filled in with that shopping list. When the gathering post is marked don
 mats". Nothing sits in the craft queue waiting on materials.
 
 Other touches:
+- `/craft` and `/gather` open the same forms, but their item box autocompletes from the wiki's recipe list
+  (craftable items for `/craft`, crafting materials for `/gather`). Typed item names are also corrected to the
+  wiki's spelling when they match, so "iron rivet" is posted as "Iron Rivets".
 - Crafting posts show the recipe (skill, trivial, station, ingredients for the quantity asked) when the item is a known recipe.
 - "Needed by" is a dropdown (ASAP / Before next raid / This week / No rush), not free text.
 - *What do you need it for?* has **Guild: raid consumables** and **Guild: equipment** choices, which only
@@ -54,7 +57,7 @@ copy `.env.example` to `.env` and fill it in, then `run.bat`.
 
 | File | What |
 |---|---|
-| `bot.py` | startup, `/tickets setup`, `/tickets mine`, `/tickets queue`, housekeeping |
+| `bot.py` | startup, `/craft`, `/gather`, `/tickets setup`, `/tickets mine`, `/tickets queue`, housekeeping |
 | `ui.py` | the panel, the four forms, the ticket buttons, how posts look |
 | `store.py` | SQLite (`tickets.db`): tickets, settings, remembered character names |
 | `recipes.py` | recipe lookup and quantity scaling from Mo Betta Crafts' `recipes.json` |

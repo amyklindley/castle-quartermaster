@@ -137,6 +137,23 @@ def test_recipe_lookup_and_scaling(env):
     assert recipe_mod.parse_quantity("1,200") == 1200 and recipe_mod.parse_quantity("a stack") is None
 
 
+def test_autocomplete(env):
+    r = ui.recipes
+    assert r.craft_choices("riv") == [("Iron Rivets (Blacksmithing)", "Iron Rivets")]
+    assert r.craft_choices("") == []
+    assert r.material_choices("co") == ["Coal"]
+    assert "Smithing Hammer" not in r.material_choices("hammer")  # tools aren't gathered
+
+
+def test_gather_item_uses_wiki_spelling(env):
+    i, forum = forum_interaction(FakeMember(ALICE))
+    f = ui.GatherForm(ALICE, officer=False)
+    fill(f.item, "iron bar"); fill(f.quantity, "5"); fill(f.character, "Moirin")
+    choose(f.needed_by, "ASAP"); choose(f.purpose, "self")
+    submit(f, i)
+    assert env.by_thread(777).fields["item"] == "Iron Bar"
+
+
 def test_real_recipe_file_loads():
     real = Path(r"C:\Users\Arcti\Projects\mobetta-bot\data\recipes.json")
     if not real.exists():
@@ -144,7 +161,11 @@ def test_real_recipe_file_loads():
     r = Recipes(cache=real)
     import json
     r.load(json.loads(real.read_text("utf-8"))["recipes"])
-    assert len(r.by_name) > 500
+    assert len(r.by_name) > 500 and len(r.materials) > 100
+    for q in ("pot", "silk", "bronze", "ale"):
+        choices = r.craft_choices(q)
+        assert 0 < len(choices) <= 25 and all(len(label) <= 100 for label, _ in choices), q
+        assert len(r.material_choices(q)) <= 25
 
 
 # ---------------------------------------------------------------- rendering
@@ -360,7 +381,7 @@ def test_craft_with_mats_opens_post(env):
     choose(f.needed_by, "No rush"); choose(f.mats, "yes")
     submit(f, i)
     kw = forum.create_thread.call_args.kwargs
-    assert kw["name"] == "🔨 8x iron rivets · Moirin"
+    assert kw["name"] == "🔨 8x Iron Rivets · Moirin"  # wiki spelling
     assert kw["content"].startswith(f"<@&{CRAFTER}> New crafting request")
     assert [t.name for t in kw["applied_tags"]] == ["Crafting", "Open"]
     t = env.by_thread(777)

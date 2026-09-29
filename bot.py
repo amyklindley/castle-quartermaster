@@ -221,6 +221,35 @@ async def queue(i: discord.Interaction, kind: app_commands.Choice[str] | None = 
     await i.response.send_message(text[:2000], ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
 
+# ---------------------------------------------------------------- /craft, /gather (wiki autocomplete)
+
+@tree.command(name="craft", description="Ask the crafters to make something; the item box searches the wiki's recipes")
+@app_commands.guild_only()
+@app_commands.describe(item="Start typing an item name", quantity="How many (you can change it on the form)")
+async def craft_cmd(i: discord.Interaction, item: str, quantity: app_commands.Range[int, 1, 9999] = 1) -> None:
+    if await ui.ready(i):
+        await i.response.send_modal(ui.CraftForm(i.user.id, item=item, quantity=str(quantity)))
+
+
+@craft_cmd.autocomplete("item")
+async def craft_items(i: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    return [app_commands.Choice(name=label[:100], value=name[:100]) for label, name in recipes.craft_choices(current)]
+
+
+@tree.command(name="gather", description="Ask the gatherers for materials; the item box searches the wiki's recipes")
+@app_commands.guild_only()
+@app_commands.describe(item="Start typing a material name", quantity="How many (you can change it on the form)")
+async def gather_cmd(i: discord.Interaction, item: str, quantity: app_commands.Range[int, 1, 9999] | None = None) -> None:
+    if s := await ui.ready(i):
+        await i.response.send_modal(ui.GatherForm(i.user.id, ui.is_officer(i.user, s), item=item,
+                                                  quantity=str(quantity) if quantity else ""))
+
+
+@gather_cmd.autocomplete("item")
+async def gather_items(i: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    return [app_commands.Choice(name=name[:100], value=name[:100]) for name in recipes.material_choices(current)]
+
+
 @tree.error
 async def on_app_command_error(i: discord.Interaction, error: app_commands.AppCommandError) -> None:
     log.exception("command failed", exc_info=error)

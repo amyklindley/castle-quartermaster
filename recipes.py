@@ -30,13 +30,18 @@ class Recipes:
     def __init__(self, cache: Path = CACHE) -> None:
         self.cache = cache
         self.by_name: dict[str, list[dict]] = {}
+        self.materials: dict[str, str] = {}  # norm(name) -> wiki spelling, for everything recipes use
 
     def load(self, recipes: list[dict]) -> None:
         by_name: dict[str, list[dict]] = {}
+        materials: dict[str, str] = {}
         for r in recipes:
             if not r.get("salvage"):
                 by_name.setdefault(norm(r["name"]), []).append(r)
-        self.by_name = by_name
+            for ing in r.get("ingredients", []):
+                if not ing.get("tool"):
+                    materials.setdefault(norm(ing["name"]), ing["name"])
+        self.by_name, self.materials = by_name, materials
 
     def refresh(self) -> None:
         """Download a fresh copy if the cached one is missing or a day old, then load whatever we have."""
@@ -66,6 +71,40 @@ class Recipes:
                 return self.by_name[key][0]
         close = difflib.get_close_matches(q, self.by_name.keys(), n=1, cutoff=0.88)
         return self.by_name[close[0]][0] if close else None
+
+    # ---------------------------------------------------------------- autocomplete for /craft and /gather
+
+    def craft_choices(self, query: str, limit: int = 25) -> list[tuple[str, str]]:
+        """(label, wiki name) pairs for craftable items matching what's been typed so far."""
+        keys = rank(query, self.by_name.keys(), limit)
+        out = []
+        for k in keys:
+            r = self.by_name[k][0]
+            skills = sorted({x.get("skill", "") for x in self.by_name[k]} - {""})
+            out.append((f"{r['name']} ({', '.join(skills)})" if skills else r["name"], r["name"]))
+        return out
+
+    def material_choices(self, query: str, limit: int = 25) -> list[str]:
+        """Wiki names of crafting materials matching what's been typed so far."""
+        return [self.materials[k] for k in rank(query, self.materials.keys(), limit)]
+
+
+def rank(query: str, keys, limit: int) -> list[str]:
+    """Normalised names best-first: exact, then starts-with, then contains every word, then near misses.
+    An empty query lists nothing (Discord shows the box's hint instead)."""
+    q = norm(query)
+    if not q:
+        return []
+    keys = list(keys)
+    words = q.split()
+    exact = [k for k in keys if k == q]
+    prefix = sorted((k for k in keys if k.startswith(q) and k != q), key=lambda k: (len(k), k))
+    contains = sorted((k for k in keys if all(w in k for w in words) and k != q and not k.startswith(q)),
+                      key=lambda k: (len(k), k))
+    out = exact + prefix + contains
+    if not out:  # only guess at typos when nothing actually matched
+        out = difflib.get_close_matches(q, keys, n=limit, cutoff=0.8)
+    return out[:limit]
 
 
 def parse_quantity(text: str) -> int | None:

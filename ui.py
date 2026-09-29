@@ -198,6 +198,8 @@ class CraftForm(ui.Modal):
         fields = {"item": self.item.value.strip(), "quantity": self.quantity.value.strip(),
                   "needed_by": self.needed_by.values[0]}
         recipe = recipes.find(fields["item"])
+        if recipe:
+            fields["item"] = recipe["name"]  # "iron rivet" -> the wiki's "Iron Rivets"
         qty = recipe_mod.parse_quantity(fields["quantity"])
         if self.mats.values[0] == "no":
             await send_to_gathering(i, fields, character, recipe, qty)
@@ -230,7 +232,8 @@ class GatherForm(ui.Modal):
     async def on_submit(self, i: discord.Interaction) -> None:
         character = self.character.value.strip()
         store.remember_character(i.user.id, character)
-        fields = {"item": self.item.value.strip(), "quantity": self.quantity.value.strip(),
+        item = self.item.value.strip()
+        fields = {"item": recipes.materials.get(recipe_mod.norm(item), item), "quantity": self.quantity.value.strip(),
                   "needed_by": self.needed_by.values[0], "purpose": self.purpose.values[0]}
         if self.for_craft:
             fields["for_craft"] = self.for_craft
@@ -329,17 +332,22 @@ async def send_to_gathering(i: discord.Interaction, fields: dict, character: str
 
 # ---------------------------------------------------------------- panel (persistent)
 
+async def ready(i: discord.Interaction) -> Settings | None:
+    """The server's settings, or None (after telling the member) if nobody has run /tickets setup yet."""
+    s = store.settings(i.guild_id)
+    if not s.forum_id:
+        await i.response.send_message("Requests aren't set up yet. An admin needs to run `/tickets setup`.",
+                                      ephemeral=True)
+        return None
+    return s
+
+
 class Panel(ui.View):
     def __init__(self) -> None:
         super().__init__(timeout=None)
 
     async def _ready(self, i: discord.Interaction) -> Settings | None:
-        s = store.settings(i.guild_id)
-        if not s.forum_id:
-            await i.response.send_message("Requests aren't set up yet. An admin needs to run `/tickets setup`.",
-                                          ephemeral=True)
-            return None
-        return s
+        return await ready(i)
 
     @ui.button(label="Crafting", emoji="🔨", style=discord.ButtonStyle.primary, custom_id="castle:new:craft")
     async def craft(self, i: discord.Interaction, _: ui.Button) -> None:
@@ -369,6 +377,7 @@ PANEL_TEXT = (
     "🌿 **Gathering**: you need materials farmed.\n"
     "📦 **Bank donation**: you're giving something to the guild bank. Include a screenshot so we can plan the space.\n"
     "🏦 **Bank request**: you'd like something from the guild bank.\n\n"
+    "**Tip:** type `/craft` or `/gather` instead, and the item box searches the wiki's recipe list as you type.\n\n"
     "You'll get a DM when someone picks up your request and when it's done. `/tickets mine` lists your open requests."
 )
 
