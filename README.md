@@ -37,7 +37,7 @@ Other touches:
 1. **Create the bot**: <https://discord.com/developers/applications> → **New Application** ("Castle Quartermaster") →
    **Bot** → **Reset Token**, copy it. No privileged intents needed. Copy the **Application ID** from
    General Information too.
-2. **Send the server admin [ADMIN-SETUP.md](ADMIN-SETUP.md)** with `<CLIENT_ID>` replaced by the Application ID.
+2. **Send the server admin [ADMIN-SETUP.md](ADMIN-SETUP.md)** (the invite link in it already has the Application ID).
    They invite the bot, make the forum, and run `/tickets setup`.
 3. **Run it** on the Google Cloud VM alongside Mo Betta Bot (SSH into the VM, then):
    ```

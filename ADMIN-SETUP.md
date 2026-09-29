@@ -8,7 +8,7 @@ this just lets it into the server and tells it where to post.
 Open this link, pick the guild's server, and press **Authorize**:
 
 ```
-https://discord.com/oauth2/authorize?client_id=<CLIENT_ID>&scope=bot%20applications.commands&permissions=328565115904
+https://discord.com/oauth2/authorize?client_id=1554547394249621584&scope=bot%20applications.commands&permissions=328565115904
 ```
 
 It asks for: View Channels, Send Messages, Send Messages in Threads, Create Public Threads, Manage Threads,
