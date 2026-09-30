@@ -68,6 +68,8 @@ CREATE INDEX IF NOT EXISTS bank_ledger_item ON bank_ledger (guild_id, item);
 MIGRATIONS = [
     ("settings", "bank_channel_id", "INTEGER"),
     ("settings", "bank_message_id", "INTEGER"),
+    ("settings", "bank_forum_id", "INTEGER"),
+    ("settings", "bank_panel_thread_id", "INTEGER"),
 ]
 
 
@@ -102,8 +104,13 @@ class Settings:
     banker_role: int | None = None
     officer_role: int | None = None
     panel_thread_id: int | None = None
-    bank_channel_id: int | None = None   # where the live inventory board lives (else the panel thread)
+    bank_channel_id: int | None = None   # text channel for the inventory board (else it sits under a panel)
     bank_message_id: int | None = None
+    bank_forum_id: int | None = None     # separate forum for donations and bank requests (else the main forum)
+    bank_panel_thread_id: int | None = None
+
+    def forum_for(self, kind: str) -> int | None:
+        return (self.bank_forum_id or self.forum_id) if kind in ("donate", "bank") else self.forum_id
 
 
 @dataclass

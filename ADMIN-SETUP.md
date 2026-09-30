@@ -15,9 +15,10 @@ It asks for: View Channels, Send Messages, Send Messages in Threads, Create Publ
 Embed Links, Attach Files, Read Message History, Use Application Commands. There's no admin, no kicking or
 banning, and no reading of messages. *Manage Threads* is how it pins the panel and tags/closes its own posts.
 
-## 2. Make the requests forum
+## 2. Make the forums
 
-1. Create a **Forum** channel, e.g. `#castle-requests`.
+1. Create two **Forum** channels: one for crafting and gathering, e.g. `#castle-requests`, and one for the guild
+   bank, e.g. `#guild-bank`. (One forum for everything also works; then skip `bank_forum` below.) For each:
 2. Edit Channel → **Permissions**:
    - **@everyone**: turn **off** *Create Posts* and leave *Send Messages in Posts* **on**. Members can
      talk in any ticket, but new tickets only come from the bot's forms, so they all have the same fields.
@@ -38,18 +39,20 @@ the role → turn on **Allow anyone to @mention this role**. That lets the bot p
 In any channel, type:
 
 ```
-/tickets setup forum:#castle-requests crafter:@Castle Crafter gatherer:@Castle Gatherer banker:@<bank role> officer:@<officer role> bank_channel:#guild-bank
+/tickets setup forum:#castle-requests crafter:@Castle Crafter gatherer:@Castle Gatherer banker:@<bank role> bank_forum:#guild-bank officer:@<officer role>
 ```
 
 - **banker**: who handles bank donations and requests (it can be the officer role).
-- **bank_channel** (optional): a text channel where the bot keeps a live **🏦 Guild Bank** inventory board
-  (one message it edits; the bot needs Send Messages and Embed Links there). Without it, the board sits under
-  the request panel.
+- **bank_forum** (optional): the forum for donations and bank requests. It gets its own pinned **🏦 Guild Bank**
+  post with the two bank buttons and the live inventory board right under them.
+- **bank_channel** (optional): a plain text channel for the inventory board instead, if you'd rather it not sit
+  in the bank forum (the bot needs Send Messages and Embed Links there).
 - **officer** (optional): can act on any ticket and open guild requisitions ("Guild: raid consumables / equipment")
   on gathering requests. Anyone with Manage Server counts as an officer automatically.
 
-The bot checks its permissions, creates the tags, and posts a pinned, locked **📋 Start a request here** post at
-the top of the forum with the four buttons. If anything's missing, it tells you exactly what. Fix it and
+The bot checks its permissions, creates the tags, and pins a **📋 Start a request here** post with the crafting and
+gathering buttons at the top of the requests forum, and a **🏦 Guild Bank** post with the bank buttons and inventory
+at the top of the bank forum. If anything's missing, it tells you exactly what. Fix it and
 run the same command again (it's safe to re-run any time, e.g. to change a role).
 
 ## Commands

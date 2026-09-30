@@ -156,3 +156,30 @@ def test_refresh_board_creates_then_edits(env):
     assert run(bank.refresh_board(client, env, ui.recipes, env.settings(GUILD))) is True
     home.send.assert_awaited_once()
     sent.edit.assert_awaited_once()
+
+
+def test_bank_tickets_go_to_the_bank_forum(env):
+    from test_tickets import forum_interaction
+    s = env.settings(GUILD)
+    s.bank_forum_id = 11
+    env.save_settings(s)
+    assert s.forum_for("donate") == 11 and s.forum_for("bank") == 11 and s.forum_for("craft") == 10
+    i, forum = forum_interaction(FakeMember(ALICE))
+    bank_forum = MagicMock(spec=discord.ForumChannel)
+    bank_forum.available_tags = []
+    posted = MagicMock(thread=MagicMock(id=778, mention="<#778>"), message=MagicMock(id=778))
+    bank_forum.create_thread = AsyncMock(return_value=posted)
+    i.guild.get_channel = lambda cid: {10: forum, 11: bank_forum}.get(cid)
+    run(ui.open_ticket(i, "bank", {"what": "Sword"}, "Moirin"))
+    bank_forum.create_thread.assert_awaited_once()
+    forum.create_thread.assert_not_awaited()
+    assert env.by_thread(778).kind == "bank"
+
+
+def test_panels_split():
+    assert [b.custom_id for b in ui.Panel().children] == ["castle:new:craft", "castle:new:gather"]
+    assert [b.custom_id for b in ui.BankPanel().children] == ["castle:new:donate", "castle:new:bank"]
+    both = ui.Panel()
+    for item in ui.BankPanel().children:
+        both.add_item(item)
+    assert len(both.to_components()[0]["components"]) == 4

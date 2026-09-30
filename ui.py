@@ -344,42 +344,55 @@ async def ready(i: discord.Interaction) -> Settings | None:
 
 
 class Panel(ui.View):
+    """Crafting and gathering buttons, pinned at the top of the requests forum."""
+
     def __init__(self) -> None:
         super().__init__(timeout=None)
 
-    async def _ready(self, i: discord.Interaction) -> Settings | None:
-        return await ready(i)
-
     @ui.button(label="Crafting", emoji="🔨", style=discord.ButtonStyle.primary, custom_id="castle:new:craft")
     async def craft(self, i: discord.Interaction, _: ui.Button) -> None:
-        if await self._ready(i):
+        if await ready(i):
             await i.response.send_modal(CraftForm(i.user.id))
 
     @ui.button(label="Gathering", emoji="🌿", style=discord.ButtonStyle.primary, custom_id="castle:new:gather")
     async def gather(self, i: discord.Interaction, _: ui.Button) -> None:
-        if s := await self._ready(i):
+        if s := await ready(i):
             await i.response.send_modal(GatherForm(i.user.id, is_officer(i.user, s)))
 
-    @ui.button(label="Bank donation", emoji="📦", style=discord.ButtonStyle.secondary, custom_id="castle:new:donate")
+
+class BankPanel(ui.View):
+    """Donation and request buttons, pinned at the top of the bank forum (the inventory board sits under them)."""
+
+    def __init__(self) -> None:
+        super().__init__(timeout=None)
+
+    @ui.button(label="Bank donation", emoji="📦", style=discord.ButtonStyle.primary, custom_id="castle:new:donate")
     async def donate(self, i: discord.Interaction, _: ui.Button) -> None:
-        if await self._ready(i):
+        if await ready(i):
             await i.response.send_modal(DonateForm(i.user.id))
 
-    @ui.button(label="Bank request", emoji="🏦", style=discord.ButtonStyle.secondary, custom_id="castle:new:bank")
+    @ui.button(label="Bank request", emoji="🏦", style=discord.ButtonStyle.primary, custom_id="castle:new:bank")
     async def bank(self, i: discord.Interaction, _: ui.Button) -> None:
-        if await self._ready(i):
+        if await ready(i):
             await i.response.send_modal(BankRequestForm(i.user.id))
 
 
 PANEL_TITLE = "📋 Start a request here"
 PANEL_TEXT = (
-    "**Castle requests.** Pick a button and fill in the form; the bot opens a post here and pings the right people.\n\n"
+    "**Crafting & gathering requests.** Pick a button and fill in the form; the bot opens a post here and pings "
+    "the right people.\n\n"
     "🔨 **Crafting**: you have the mats and need something made. No mats? The form will help you get them gathered first.\n"
-    "🌿 **Gathering**: you need materials farmed.\n"
-    "📦 **Bank donation**: you're giving something to the guild bank. Include a screenshot so we can plan the space.\n"
-    "🏦 **Bank request**: you'd like something from the guild bank.\n\n"
+    "🌿 **Gathering**: you need materials farmed.\n\n"
     "**Tip:** type `/craft` or `/gather` instead, and the item box searches the wiki's recipe list as you type.\n\n"
     "You'll get a DM when someone picks up your request and when it's done. `/tickets mine` lists your open requests."
+)
+BANK_PANEL_TITLE = "🏦 Guild Bank"
+BANK_PANEL_TEXT = (
+    "**Guild bank.** Pick a button and fill in the form; the bot opens a post here and pings the bankers.\n\n"
+    "📦 **Bank donation**: you're giving something to the guild bank. Include a screenshot so we can plan the space.\n"
+    "🏦 **Bank request**: you'd like something from the bank. Say what it's for and a banker will approve or deny it.\n\n"
+    "What's in stock is right below this and updates itself. `/bank find <item>` checks one thing; "
+    "`/bank history` shows recent movements."
 )
 
 
@@ -625,7 +638,8 @@ async def open_ticket(i: discord.Interaction, kind: str, fields: dict, character
             await i.response.send_message(text, ephemeral=True)
 
     s = store.settings(i.guild_id)
-    forum = i.guild.get_channel(s.forum_id) if (i.guild and s.forum_id) else None
+    forum_id = s.forum_for(kind)
+    forum = i.guild.get_channel(forum_id) if (i.guild and forum_id) else None
     if not isinstance(forum, discord.ForumChannel):
         return await say("Requests aren't set up yet (or the requests forum was deleted). Ask an admin to run `/tickets setup`.")
     if not i.response.is_done():

@@ -85,8 +85,9 @@ def board_embeds(stock: list[tuple[str, int]], wiki: Recipes) -> list[discord.Em
 
 
 async def board_home(client: discord.Client, s: Settings) -> discord.abc.Messageable | None:
-    """The channel the board lives in: the bank channel from setup, else the request panel's post."""
-    target_id = s.bank_channel_id or s.panel_thread_id
+    """The channel the board lives in: the bank channel from setup, else the bank panel's post, else the
+    request panel's post."""
+    target_id = s.bank_channel_id or s.bank_panel_thread_id or s.panel_thread_id
     if not target_id:
         return None
     ch = client.get_channel(target_id)

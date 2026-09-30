@@ -1,7 +1,8 @@
 # Castle Quartermaster
 
 A Discord bot for the guild's crafting, gathering and guild bank requests. Members press a button, fill in
-a short form, and the bot opens a post in a requests forum and pings the people who handle it. Staff
+a short form, and the bot opens a post in the right forum (crafting & gathering, or the guild bank) and pings
+the people who handle it. Staff
 press **Claim** and **Done** on the post, and the requester gets a DM at each step. Forum tags
 (Open / Claimed / Done / Cancelled) turn the channel into a live board anyone can watch or mute.
 
@@ -24,8 +25,8 @@ mats". Nothing sits in the craft queue waiting on materials.
 **Guild bank inventory.** When a banker marks a donation **Received** or a request **Handed over**, a small
 form asks what actually moved (pre-filled from the ticket, one item per line) and the inventory updates.
 `/bank add`, `/bank remove` and `/bank set` cover raid loot, consumables handed out and recounts. A live
-**🏦 Guild Bank** board, grouped by category (weapons, armor, potions, crafting materials…), sits in the
-bank channel from setup or under the request panel and redraws itself on every change. Anyone can ask
+**🏦 Guild Bank** board, grouped by category (weapons, armor, potions, crafting materials…), sits under the
+bank forum's pinned post (or in a text channel from setup) and redraws itself on every change. Anyone can ask
 `/bank show`, `/bank find <item>` (with the wiki's item icon and recent history) or `/bank history`.
 
 Other touches:

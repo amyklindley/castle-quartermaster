@@ -85,6 +85,7 @@ async def housekeeping() -> None:
 async def setup_hook() -> None:
     # Buttons keep working after a restart: these two views answer clicks on every panel and ticket post.
     client.add_view(ui.Panel())
+    client.add_view(ui.BankPanel())
     client.add_view(ui.Controls())
     tree.add_command(tickets)
     tree.add_command(bank_cmds)
@@ -133,10 +134,11 @@ async def on_ready() -> None:
 
 # ---------------------------------------------------------------- /tickets setup
 
-async def ensure_tags(forum: discord.ForumChannel) -> list[str]:
-    """Create any missing Crafting/Gathering/... and Open/Claimed/... tags. Returns the ones we couldn't create."""
+async def ensure_tags(forum: discord.ForumChannel, kinds: tuple[str, ...]) -> list[str]:
+    """Create any missing kind tags (Crafting, Gathering, ...) and status tags (Open, Claimed, ...) on a forum.
+    Returns the ones we couldn't create."""
     have = {t.name.lower() for t in forum.available_tags}
-    wanted = [k.tag for k in ui.KINDS.values()] + list(ui.STATUS_TAGS.values())
+    wanted = [ui.KINDS[k].tag for k in kinds] + list(ui.STATUS_TAGS.values())
     failed = []
     for name in wanted:
         if name.lower() in have:
@@ -148,8 +150,9 @@ async def ensure_tags(forum: discord.ForumChannel) -> list[str]:
     return failed
 
 
-async def post_panel(forum: discord.ForumChannel, old_thread_id: int | None) -> tuple[discord.Thread, list[str]]:
-    """Put the button panel in a pinned post at the top of the forum (reusing the old one if it's there).
+async def post_panel(forum: discord.ForumChannel, old_thread_id: int | None, title: str, text: str,
+                     view: discord.ui.View) -> tuple[discord.Thread, list[str]]:
+    """Put a button panel in a pinned post at the top of a forum (reusing the old one if it's there).
     Not locked: Discord lets only moderators press buttons in a locked post."""
     problems = []
     thread = forum.guild.get_thread(old_thread_id) if old_thread_id else None
@@ -161,71 +164,107 @@ async def post_panel(forum: discord.ForumChannel, old_thread_id: int | None) -> 
     if isinstance(thread, discord.Thread) and thread.parent_id == forum.id:
         try:
             msg = await thread.fetch_message(thread.id)  # a forum post's first message shares the post's id
-            await msg.edit(content=ui.PANEL_TEXT, view=ui.Panel())
+            await msg.edit(content=text, view=view)
         except discord.HTTPException:
             thread = None
     if not isinstance(thread, discord.Thread) or thread.parent_id != forum.id:
-        posted = await forum.create_thread(name=ui.PANEL_TITLE, content=ui.PANEL_TEXT, view=ui.Panel())
+        posted = await forum.create_thread(name=title, content=text, view=view)
         thread = posted.thread
     try:
         await thread.edit(pinned=True, locked=False, archived=False)
     except discord.HTTPException:
-        problems.append("couldn't pin the panel post (the bot needs Manage Threads)")
+        problems.append(f"couldn't pin the panel post in {forum.mention} (the bot needs Manage Threads)")
     return thread, problems
 
 
-@tickets.command(name="setup", description="Admins: choose the requests forum and the roles that handle each kind")
+def missing_perms(forum: discord.ForumChannel) -> list[str]:
+    perms = forum.permissions_for(forum.guild.me)
+    return [label for attr, label in NEEDED.items() if not getattr(perms, attr)]
+
+
+@tickets.command(name="setup", description="Admins: choose the request forums and the roles that handle each kind")
 @app_commands.describe(
-    forum="Forum channel where requests get posted (the panel goes at the top)",
+    forum="Forum for crafting and gathering requests (the panel goes at the top)",
     crafter="Role pinged for crafting requests, e.g. Castle Crafter",
     gatherer="Role pinged for gathering requests, e.g. Castle Gatherer",
     banker="Role that handles bank donations and requests",
+    bank_forum="Forum for bank donations and requests, with the bank panel and inventory at the top (optional)",
     officer="Role that can act on any ticket and open guild requisitions (optional)",
-    bank_channel="Text channel for the live bank inventory board (optional; otherwise it sits under the panel)",
+    bank_channel="Text channel for the inventory board instead of the bank panel (optional)",
 )
 @app_commands.default_permissions(manage_guild=True)
 async def setup(i: discord.Interaction, forum: discord.ForumChannel, crafter: discord.Role, gatherer: discord.Role,
-                banker: discord.Role, officer: discord.Role | None = None,
-                bank_channel: discord.TextChannel | None = None) -> None:
+                banker: discord.Role, bank_forum: discord.ForumChannel | None = None,
+                officer: discord.Role | None = None, bank_channel: discord.TextChannel | None = None) -> None:
     await i.response.defer(ephemeral=True, thinking=True)
-    me = forum.guild.me
-    perms = forum.permissions_for(me)
-    missing = [label for attr, label in NEEDED.items() if not getattr(perms, attr)]
-    if missing:
-        await i.followup.send("I'm missing these permissions in " + forum.mention + ":\n"
-                              + "\n".join(f"• {m}" for m in missing)
-                              + "\n\nGive the bot's role those in the forum's permission settings, then run this again.",
-                              ephemeral=True)
-        return
+    for f in (forum, bank_forum):
+        if f and (missing := missing_perms(f)):
+            await i.followup.send("I'm missing these permissions in " + f.mention + ":\n"
+                                  + "\n".join(f"• {m}" for m in missing)
+                                  + "\n\nGive the bot's role those in the forum's permission settings, then run this again.",
+                                  ephemeral=True)
+            return
 
     s = store.settings(i.guild_id)
     s.forum_id, s.crafter_role, s.gatherer_role, s.banker_role = forum.id, crafter.id, gatherer.id, banker.id
     s.officer_role = officer.id if officer else None
+    s.bank_forum_id = bank_forum.id if bank_forum and bank_forum.id != forum.id else None
     if bank_channel and bank_channel.id != s.bank_channel_id:
         s.bank_channel_id, s.bank_message_id = bank_channel.id, None  # the board moves; post a fresh one there
+    if not bank_channel and s.bank_channel_id:
+        s.bank_channel_id, s.bank_message_id = None, None
 
     notes = []
-    failed_tags = await ensure_tags(forum)
-    if failed_tags:
-        notes.append("Couldn't create the forum tags " + ", ".join(failed_tags) + ". Either create them by hand "
-                     "(Edit Channel → Tags), or let the bot's role *Manage Channel* on this forum and run setup again. "
-                     "Tickets work without them; the tags just make the list easy to filter.")
-    thread, problems = await post_panel(forum, s.panel_thread_id)
-    s.panel_thread_id = thread.id
+    plan = [(forum, ("craft", "gather") if s.bank_forum_id else tuple(ui.KINDS))]
+    if s.bank_forum_id:
+        plan.append((bank_forum, ("donate", "bank")))
+    for f, kinds in plan:
+        failed_tags = await ensure_tags(f, kinds)
+        if failed_tags:
+            notes.append(f"Couldn't create the tags {', '.join(failed_tags)} in {f.mention}. Either create them by hand "
+                         "(Edit Channel → Tags), or let the bot's role *Manage Channel* on that forum and run setup again. "
+                         "Tickets work without them; the tags just make the list easy to filter.")
+
+    if s.bank_forum_id:
+        thread, problems = await post_panel(forum, s.panel_thread_id, ui.PANEL_TITLE, ui.PANEL_TEXT, ui.Panel())
+        notes += problems
+        s.panel_thread_id = thread.id
+        bank_thread, problems = await post_panel(bank_forum, s.bank_panel_thread_id, ui.BANK_PANEL_TITLE,
+                                                 ui.BANK_PANEL_TEXT, ui.BankPanel())
+        notes += problems
+        if bank_thread.id != s.bank_panel_thread_id:
+            s.bank_message_id = None if not s.bank_channel_id else s.bank_message_id
+        s.bank_panel_thread_id = bank_thread.id
+    else:
+        # one forum for everything: both button sets on the same pinned post
+        both = ui.Panel()
+        for item in ui.BankPanel().children:
+            both.add_item(item)
+        text = ui.PANEL_TEXT.replace("**Crafting & gathering requests.**", "**Castle requests.**").replace(
+            "🌿 **Gathering**: you need materials farmed.\n",
+            "🌿 **Gathering**: you need materials farmed.\n"
+            "📦 **Bank donation**: you're giving something to the guild bank. Include a screenshot so we can plan the space.\n"
+            "🏦 **Bank request**: you'd like something from the guild bank.\n")
+        thread, problems = await post_panel(forum, s.panel_thread_id, ui.PANEL_TITLE, text, both)
+        notes += problems
+        s.panel_thread_id = thread.id
+        s.bank_panel_thread_id = None
     store.save_settings(s)
-    notes += problems
     if not await bank.refresh_board(client, store, recipes, s):
         notes.append("Couldn't post the bank inventory board" + (f" in {bank_channel.mention}" if bank_channel else "")
                      + ". Check the bot can send messages and embeds there, then run `/bank board`.")
 
+    perms = forum.permissions_for(forum.guild.me)
     unpingable = [r.mention for r in (crafter, gatherer, banker)
                   if not r.mentionable and not perms.mention_everyone]
     if unpingable:
         notes.append("I can't ping " + ", ".join(unpingable) + ". Turn on *Allow anyone to @mention this role* "
                      "in each role's settings, or give the bot *Mention All Roles*.")
 
+    where = f"Crafting and gathering go to {forum.mention}"
+    where += f"; the bank lives in {bank_forum.mention}" if s.bank_forum_id else " along with the bank"
     await i.followup.send(
-        f"All set. Requests go to {forum.mention}; the panel is here: {thread.mention}\n"
+        f"All set. {where}.\n"
         f"🔨 Crafting → {crafter.mention} · 🌿 Gathering → {gatherer.mention} · 📦🏦 Bank → {banker.mention}"
         + (f" · Officers: {officer.mention}" if officer else "")
         + ("\n\n" + "\n".join(f"⚠️ {n}" for n in notes) if notes else ""),
