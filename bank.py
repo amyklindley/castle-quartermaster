@@ -28,7 +28,7 @@ def parse_lines(text: str, wiki: Recipes | None = None) -> list[tuple[str, int]]
     and plain "Spider Silk" (one). Item names get the wiki's spelling when known.
     """
     out: dict[str, int] = {}
-    for raw in re.split(r"[\n,;]+", text):
+    for raw in re.split(r"[\n;]+|,(?!\d)", text):  # commas separate items, except inside "1,000"
         raw = raw.strip(" \t-•*")
         if not raw:
             continue
