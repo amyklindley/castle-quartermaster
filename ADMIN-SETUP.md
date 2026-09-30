@@ -38,10 +38,13 @@ the role → turn on **Allow anyone to @mention this role**. That lets the bot p
 In any channel, type:
 
 ```
-/tickets setup forum:#castle-requests crafter:@Castle Crafter gatherer:@Castle Gatherer banker:@<bank role> officer:@<officer role>
+/tickets setup forum:#castle-requests crafter:@Castle Crafter gatherer:@Castle Gatherer banker:@<bank role> officer:@<officer role> bank_channel:#guild-bank
 ```
 
 - **banker**: who handles bank donations and requests (it can be the officer role).
+- **bank_channel** (optional): a text channel where the bot keeps a live **🏦 Guild Bank** inventory board
+  (one message it edits; the bot needs Send Messages and Embed Links there). Without it, the board sits under
+  the request panel.
 - **officer** (optional): can act on any ticket and open guild requisitions ("Guild: raid consumables / equipment")
   on gathering requests. Anyone with Manage Server counts as an officer automatically.
 
@@ -57,6 +60,8 @@ run the same command again (it's safe to re-run any time, e.g. to change a role)
 | `/craft <item>` | anyone | Opens the crafting form; the item box searches the wiki's recipes as you type |
 | `/gather <item>` | anyone | Opens the gathering form; the item box searches crafting materials as you type |
 | `/tickets mine` | anyone | Your open requests |
+| `/bank show [category]`, `/bank find <item>`, `/bank history [item]` | anyone | What's in the bank |
+| `/bank add`, `/bank remove`, `/bank set`, `/bank board` | bank role / officers | Change the inventory by hand, redraw the board |
 | `/tickets queue [kind]` | anyone | Everything open, optionally just one kind |
 
 Only admins see `/tickets setup` by default. You can change who sees what under Server Settings →

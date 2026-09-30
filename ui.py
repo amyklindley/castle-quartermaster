@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 import discord
 from discord import ui
 
+import bank
 import recipes as recipe_mod
 from recipes import Recipes
 from store import ACTIVE, CANCELLED, CLAIMED, DONE, OPEN, Settings, Store, Ticket
@@ -432,12 +433,9 @@ class Controls(ui.View):
             return await _deny(i, f"Only the {KINDS[t.kind].staff_word}s can close this one.")
         if t.status not in ACTIVE:
             return await _deny(i, "This is already closed.")
-        k = KINDS[t.kind]
-        t = store.set_status(t.id, DONE, claimer_id=t.claimer_id or i.user.id)
-        dm = f"Your {k.name.lower()} request #{t.id} was {k.done_word} by {i.user.display_name}."
-        if t.fields.get("for_craft"):
-            dm += " Your mats are in! Press **Open the crafting request** on the post when you have them."
-        await _apply(i, t, f"✅ {i.user.mention} marked this {k.done_word}.", dm)
+        if t.kind in ("donate", "bank"):
+            return await i.response.send_modal(BankLinesForm(t))  # record what moved, then close
+        await finish_done(i, t)
 
     @ui.button(label="Unclaim", emoji="↩️", style=discord.ButtonStyle.secondary, custom_id="castle:unclaim")
     async def unclaim(self, i: discord.Interaction, _: ui.Button) -> None:
@@ -492,6 +490,51 @@ class Controls(ui.View):
         t = store.set_status(t.id, OPEN)
         await _apply(i, t, f"🟡 {i.user.mention} reopened this.",
                      f"Your {KINDS[t.kind].name.lower()} request #{t.id} was reopened by {i.user.display_name}.")
+
+
+async def finish_done(i: discord.Interaction, t: Ticket, extra: str = "") -> None:
+    k = KINDS[t.kind]
+    t = store.set_status(t.id, DONE, claimer_id=t.claimer_id or i.user.id)
+    dm = f"Your {k.name.lower()} request #{t.id} was {k.done_word} by {i.user.display_name}."
+    if t.fields.get("for_craft"):
+        dm += " Your mats are in! Press **Open the crafting request** on the post when you have them."
+    await _apply(i, t, f"✅ {i.user.mention} marked this {k.done_word}." + extra, dm + extra)
+
+
+class BankLinesForm(ui.Modal):
+    """Received / Handed over: the banker confirms what actually moved, and the inventory follows."""
+
+    def __init__(self, t: Ticket) -> None:
+        going_in = t.kind == "donate"
+        super().__init__(title="What went into the bank?" if going_in else "What left the bank?")
+        self.ticket = t
+        lbl, self.lines = _text("Items, one per line", paragraph=True, max_length=1000, required=False,
+                                default=bank.format_lines(bank.parse_lines(t.fields.get("what", ""), recipes)),
+                                placeholder="12 Spider Silk\n3 Iron Bar",
+                                description="Fix the list if it's off. Leave it empty to skip the inventory.")
+        self.add_item(lbl)
+
+    async def on_submit(self, i: discord.Interaction) -> None:
+        t = store.get(self.ticket.id)
+        if t is None or t.status not in ACTIVE:
+            return await _deny(i, "This is already closed.")
+        pairs = bank.parse_lines(self.lines.value, recipes)
+        sign = 1 if t.kind == "donate" else -1
+        why = f"{'donation' if sign > 0 else 'request'} #{t.id}"
+        moved, short = [], []
+        for item, qty in pairs:
+            left = store.bank_change(i.guild_id, item, sign * qty, i.user.id, t.id, why)
+            moved.append(f"{qty:,} {item}")
+            if left < 0:
+                short.append(f"{item} (bank now shows {left})")
+        extra = ""
+        if moved:
+            extra = ("\n📦 Into the bank: " if sign > 0 else "\n📤 Out of the bank: ") + ", ".join(moved)
+        if short:
+            extra += "\n⚠️ More went out than was recorded for " + ", ".join(short) + ". A banker may want to `/bank set` it."
+        await finish_done(i, t, extra)
+        if moved:
+            await bank.refresh_board(i.client, store, recipes, store.settings(i.guild_id))
 
 
 async def _ticket_for(i: discord.Interaction) -> tuple[Ticket | None, Settings | None]:

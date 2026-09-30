@@ -21,6 +21,13 @@ already filled in with that shopping list. When the gathering post is marked don
 **Open the crafting request** button that re-opens the crafting form, pre-filled, with "Yes, I have the
 mats". Nothing sits in the craft queue waiting on materials.
 
+**Guild bank inventory.** When a banker marks a donation **Received** or a request **Handed over**, a small
+form asks what actually moved (pre-filled from the ticket, one item per line) and the inventory updates.
+`/bank add`, `/bank remove` and `/bank set` cover raid loot, consumables handed out and recounts. A live
+**🏦 Guild Bank** board, grouped by category (weapons, armor, potions, crafting materials…), sits in the
+bank channel from setup or under the request panel and redraws itself on every change. Anyone can ask
+`/bank show`, `/bank find <item>` (with the wiki's item icon and recent history) or `/bank history`.
+
 Other touches:
 - `/craft` and `/gather` open the same forms, but their item box autocompletes from the wiki's recipe list
   (craftable items for `/craft`, crafting materials for `/gather`). Typed item names are also corrected to the
@@ -57,10 +64,11 @@ copy `.env.example` to `.env` and fill it in, then `run.bat`.
 
 | File | What |
 |---|---|
-| `bot.py` | startup, `/craft`, `/gather`, `/tickets setup`, `/tickets mine`, `/tickets queue`, housekeeping |
+| `bot.py` | startup, `/craft`, `/gather`, `/tickets …`, `/bank …`, housekeeping |
+| `bank.py` | bank line parsing, the live inventory board, history formatting |
 | `ui.py` | the panel, the four forms, the ticket buttons, how posts look |
-| `store.py` | SQLite (`tickets.db`): tickets, settings, remembered character names |
-| `recipes.py` | recipe lookup and quantity scaling from Mo Betta Crafts' `recipes.json` |
+| `store.py` | SQLite (`tickets.db`): tickets, settings, bank ledger, remembered character names |
+| `recipes.py` | wiki recipes and items: lookup, spelling, autocomplete, bank categories |
 | `tests/` | offline tests with fake Discord objects: `.venv\Scripts\python -m pytest -q` |
 
 Back up `tickets.db` if you care about history; everything else can be reinstalled.

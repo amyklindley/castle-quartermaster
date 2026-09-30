@@ -17,6 +17,7 @@ from pathlib import Path
 import discord
 from discord import app_commands
 
+import bank
 import ui
 from recipes import Recipes
 from store import CANCELLED, Store
@@ -86,6 +87,7 @@ async def setup_hook() -> None:
     client.add_view(ui.Panel())
     client.add_view(ui.Controls())
     tree.add_command(tickets)
+    tree.add_command(bank_cmds)
     ids = guild_ids()
     if ids:
         # Commands registered per server show up instantly (global ones can lag), so register them only
@@ -178,10 +180,12 @@ async def post_panel(forum: discord.ForumChannel, old_thread_id: int | None) -> 
     gatherer="Role pinged for gathering requests, e.g. Castle Gatherer",
     banker="Role that handles bank donations and requests",
     officer="Role that can act on any ticket and open guild requisitions (optional)",
+    bank_channel="Text channel for the live bank inventory board (optional; otherwise it sits under the panel)",
 )
 @app_commands.default_permissions(manage_guild=True)
 async def setup(i: discord.Interaction, forum: discord.ForumChannel, crafter: discord.Role, gatherer: discord.Role,
-                banker: discord.Role, officer: discord.Role | None = None) -> None:
+                banker: discord.Role, officer: discord.Role | None = None,
+                bank_channel: discord.TextChannel | None = None) -> None:
     await i.response.defer(ephemeral=True, thinking=True)
     me = forum.guild.me
     perms = forum.permissions_for(me)
@@ -196,6 +200,8 @@ async def setup(i: discord.Interaction, forum: discord.ForumChannel, crafter: di
     s = store.settings(i.guild_id)
     s.forum_id, s.crafter_role, s.gatherer_role, s.banker_role = forum.id, crafter.id, gatherer.id, banker.id
     s.officer_role = officer.id if officer else None
+    if bank_channel and bank_channel.id != s.bank_channel_id:
+        s.bank_channel_id, s.bank_message_id = bank_channel.id, None  # the board moves; post a fresh one there
 
     notes = []
     failed_tags = await ensure_tags(forum)
@@ -207,6 +213,9 @@ async def setup(i: discord.Interaction, forum: discord.ForumChannel, crafter: di
     s.panel_thread_id = thread.id
     store.save_settings(s)
     notes += problems
+    if not await bank.refresh_board(client, store, recipes, s):
+        notes.append("Couldn't post the bank inventory board" + (f" in {bank_channel.mention}" if bank_channel else "")
+                     + ". Check the bot can send messages and embeds there, then run `/bank board`.")
 
     unpingable = [r.mention for r in (crafter, gatherer, banker)
                   if not r.mentionable and not perms.mention_everyone]
@@ -274,6 +283,112 @@ async def gather_cmd(i: discord.Interaction, item: str, quantity: app_commands.R
 @gather_cmd.autocomplete("item")
 async def gather_items(i: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     return [app_commands.Choice(name=name[:100], value=name[:100]) for name in recipes.material_choices(current)]
+
+
+# ---------------------------------------------------------------- /bank
+
+bank_cmds = app_commands.Group(name="bank", description="What's in the guild bank", guild_only=True)
+CATEGORY_CHOICES = [app_commands.Choice(name=c, value=c) for c in bank.CATEGORIES]
+
+
+def _wiki_choices(i: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    names = store.bank_items_like(i.guild_id, current) if i.guild_id else []
+    names += [n for n in recipes.item_choices(current) if n not in names]
+    return [app_commands.Choice(name=n[:100], value=n[:100]) for n in names[:25]]
+
+
+@bank_cmds.command(name="show", description="The bank inventory, optionally one category")
+@app_commands.choices(category=CATEGORY_CHOICES)
+async def bank_show(i: discord.Interaction, category: app_commands.Choice[str] | None = None) -> None:
+    stock = store.bank_stock(i.guild_id)
+    if category:
+        stock = [(item, n) for item, n in stock if recipes.category(item) == category.value]
+        if not stock:
+            return await i.response.send_message(f"Nothing in {category.value} right now.", ephemeral=True)
+    await i.response.send_message(embeds=bank.board_embeds(stock, recipes), ephemeral=True)
+
+
+@bank_cmds.command(name="find", description="How many of an item the bank has, and its recent history")
+@app_commands.describe(item="Start typing an item name")
+async def bank_find(i: discord.Interaction, item: str) -> None:
+    name = recipes.item_name(item)
+    n = store.bank_count(i.guild_id, name)
+    e = discord.Embed(title=name, color=0xD9AB3F, description=f"**{n:,}** in the bank" if n > 0 else "None in the bank right now.")
+    e.add_field(name="Section", value=recipes.category(name))
+    icon = recipes.icon(name)
+    if icon:
+        e.set_thumbnail(url=icon)
+    hist = store.bank_history(i.guild_id, name, limit=6)
+    if hist:
+        e.add_field(name="Recent", value=bank.history_lines(hist)[:1024], inline=False)
+    await i.response.send_message(embed=e, ephemeral=True)
+
+
+@bank_find.autocomplete("item")
+async def bank_find_ac(i: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    return _wiki_choices(i, current)
+
+
+async def _bank_staff(i: discord.Interaction):
+    s = store.settings(i.guild_id)
+    if not ui.is_staff(i.user, s, "bank"):
+        await i.response.send_message("Only bankers and officers can change the inventory.", ephemeral=True)
+        return None
+    return s
+
+
+@bank_cmds.command(name="add", description="Bankers: record items going into the bank")
+@app_commands.describe(item="Item name", quantity="How many", note="Why (optional), e.g. raid loot")
+async def bank_add(i: discord.Interaction, item: str, quantity: app_commands.Range[int, 1, 1_000_000], note: str = "") -> None:
+    if s := await _bank_staff(i):
+        name = recipes.item_name(item)
+        n = store.bank_change(i.guild_id, name, quantity, i.user.id, note=note)
+        await i.response.send_message(f"📦 +{quantity:,} {name}. The bank now has **{n:,}**.", ephemeral=True)
+        await bank.refresh_board(client, store, recipes, s)
+
+
+@bank_cmds.command(name="remove", description="Bankers: record items leaving the bank")
+@app_commands.describe(item="Item name", quantity="How many", note="Why (optional), e.g. raid consumables")
+async def bank_remove(i: discord.Interaction, item: str, quantity: app_commands.Range[int, 1, 1_000_000], note: str = "") -> None:
+    if s := await _bank_staff(i):
+        name = recipes.item_name(item)
+        n = store.bank_change(i.guild_id, name, -quantity, i.user.id, note=note)
+        warn = " (that's more than was recorded; `/bank set` fixes the count)" if n < 0 else ""
+        await i.response.send_message(f"📤 −{quantity:,} {name}. The bank now has **{max(n, 0):,}**{warn}.", ephemeral=True)
+        await bank.refresh_board(client, store, recipes, s)
+
+
+@bank_cmds.command(name="set", description="Bankers: set an item's count to what's actually there (after a recount)")
+@app_commands.describe(item="Item name", quantity="How many are really in the bank", note="Why (optional)")
+async def bank_set(i: discord.Interaction, item: str, quantity: app_commands.Range[int, 0, 1_000_000], note: str = "recount") -> None:
+    if s := await _bank_staff(i):
+        name = recipes.item_name(item)
+        delta = quantity - store.bank_count(i.guild_id, name)
+        if delta:
+            store.bank_change(i.guild_id, name, delta, i.user.id, note=note)
+        await i.response.send_message(f"🧮 {name} set to **{quantity:,}** ({delta:+,}).", ephemeral=True)
+        await bank.refresh_board(client, store, recipes, s)
+
+
+@bank_cmds.command(name="history", description="Recent bank movements, optionally for one item")
+@app_commands.describe(item="Item name (optional)")
+async def bank_history(i: discord.Interaction, item: str | None = None) -> None:
+    name = recipes.item_name(item) if item else None
+    text = bank.history_lines(store.bank_history(i.guild_id, name, limit=20))
+    e = discord.Embed(title=f"🏦 History: {name}" if name else "🏦 Recent bank movements", description=text[:4000], color=0xD9AB3F)
+    await i.response.send_message(embed=e, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+
+
+@bank_cmds.command(name="board", description="Bankers: redraw the live inventory board")
+async def bank_board(i: discord.Interaction) -> None:
+    if s := await _bank_staff(i):
+        ok = await bank.refresh_board(client, store, recipes, s)
+        await i.response.send_message("Board updated." if ok else "Couldn't post the board; check the bot can send "
+                                      "messages and embeds in the bank channel (or run `/tickets setup`).", ephemeral=True)
+
+
+for _cmd in (bank_add, bank_remove, bank_set, bank_history):
+    _cmd.autocomplete("item")(bank_find_ac)
 
 
 @tree.error

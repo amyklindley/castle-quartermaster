@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 
 DB_FILE = Path(__file__).resolve().parent / "tickets.db"
@@ -50,7 +50,25 @@ CREATE TABLE IF NOT EXISTS characters (
     user_id INTEGER PRIMARY KEY,
     name    TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS bank_ledger (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id   INTEGER NOT NULL,
+    item       TEXT    NOT NULL,
+    delta      INTEGER NOT NULL,
+    actor_id   INTEGER NOT NULL,
+    ticket_id  INTEGER,
+    note       TEXT    NOT NULL DEFAULT '',
+    created_at REAL    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS bank_ledger_item ON bank_ledger (guild_id, item);
 """
+
+# Columns added after the first release; ALTER TABLE keeps old databases working.
+MIGRATIONS = [
+    ("settings", "bank_channel_id", "INTEGER"),
+    ("settings", "bank_message_id", "INTEGER"),
+]
 
 
 @dataclass
@@ -84,6 +102,20 @@ class Settings:
     banker_role: int | None = None
     officer_role: int | None = None
     panel_thread_id: int | None = None
+    bank_channel_id: int | None = None   # where the live inventory board lives (else the panel thread)
+    bank_message_id: int | None = None
+
+
+@dataclass
+class LedgerEntry:
+    id: int
+    guild_id: int
+    item: str
+    delta: int
+    actor_id: int
+    ticket_id: int | None
+    note: str
+    created_at: float
 
 
 class Store:
@@ -91,6 +123,9 @@ class Store:
         self.db = sqlite3.connect(str(path))
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        for table, column, kind in MIGRATIONS:
+            if column not in {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}:
+                self.db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
         self.db.commit()
 
     # ---------------------------------------------------------------- tickets
@@ -170,15 +205,50 @@ class Store:
         return Settings(**dict(row)) if row else Settings(guild_id=guild_id)
 
     def save_settings(self, s: Settings) -> None:
+        cols = [f.name for f in fields(Settings)]
         self.db.execute(
-            "INSERT INTO settings (guild_id, forum_id, crafter_role, gatherer_role, banker_role, officer_role, panel_thread_id)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (guild_id) DO UPDATE SET forum_id = excluded.forum_id,"
-            " crafter_role = excluded.crafter_role, gatherer_role = excluded.gatherer_role,"
-            " banker_role = excluded.banker_role, officer_role = excluded.officer_role,"
-            " panel_thread_id = excluded.panel_thread_id",
-            (s.guild_id, s.forum_id, s.crafter_role, s.gatherer_role, s.banker_role, s.officer_role, s.panel_thread_id),
+            f"INSERT INTO settings ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})"
+            " ON CONFLICT (guild_id) DO UPDATE SET " + ", ".join(f"{c} = excluded.{c}" for c in cols[1:]),
+            [getattr(s, c) for c in cols],
         )
         self.db.commit()
+
+    # ---------------------------------------------------------------- guild bank ledger
+
+    def bank_change(self, guild_id: int, item: str, delta: int, actor_id: int, ticket_id: int | None = None,
+                    note: str = "") -> int:
+        """Record items going in (+) or out (-). Returns the item's new count."""
+        self.db.execute(
+            "INSERT INTO bank_ledger (guild_id, item, delta, actor_id, ticket_id, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (guild_id, item, delta, actor_id, ticket_id, note, time.time()),
+        )
+        self.db.commit()
+        return self.bank_count(guild_id, item)
+
+    def bank_count(self, guild_id: int, item: str) -> int:
+        row = self.db.execute("SELECT COALESCE(SUM(delta), 0) AS n FROM bank_ledger WHERE guild_id = ? AND item = ?",
+                              (guild_id, item)).fetchone()
+        return int(row["n"])
+
+    def bank_stock(self, guild_id: int) -> list[tuple[str, int]]:
+        """Everything with a positive count, alphabetical."""
+        rows = self.db.execute(
+            "SELECT item, SUM(delta) AS n FROM bank_ledger WHERE guild_id = ? GROUP BY item HAVING n > 0 ORDER BY item",
+            (guild_id,)).fetchall()
+        return [(r["item"], int(r["n"])) for r in rows]
+
+    def bank_items_like(self, guild_id: int, query: str, limit: int = 25) -> list[str]:
+        rows = self.db.execute(
+            "SELECT item FROM bank_ledger WHERE guild_id = ? AND item LIKE ? GROUP BY item HAVING SUM(delta) > 0"
+            " ORDER BY item LIMIT ?", (guild_id, f"%{query}%", limit)).fetchall()
+        return [r["item"] for r in rows]
+
+    def bank_history(self, guild_id: int, item: str | None = None, limit: int = 15) -> list[LedgerEntry]:
+        sql, args = "SELECT * FROM bank_ledger WHERE guild_id = ?", [guild_id]
+        if item:
+            sql, args = sql + " AND item = ?", args + [item]
+        rows = self.db.execute(sql + " ORDER BY id DESC LIMIT ?", args + [limit]).fetchall()
+        return [LedgerEntry(**dict(r)) for r in rows]
 
     # ---------------------------------------------------------------- character names
 

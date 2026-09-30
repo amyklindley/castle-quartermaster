@@ -1,8 +1,9 @@
-"""Recipe lookup for crafting tickets, from the same wiki-scraped recipes.json Mo Betta Crafts publishes.
+"""Wiki data: recipes (from Mo Betta Crafts) and items (from Mo Betta Quests), both scraped from the community wiki.
 
-When someone asks for "20 Iron Rivets", the ticket shows the recipe (skill, station, ingredients scaled to
-the quantity), and a "no mats" request pre-fills the gathering form with that shopping list. If the file
-can't be downloaded or the item isn't a known recipe, tickets simply go without it.
+Recipes: when someone asks for "20 Iron Rivets", the ticket shows the recipe (skill, station, ingredients
+scaled to the quantity), and a "no mats" request pre-fills the gathering form with that shopping list.
+Items: consistent spelling for whatever people type, autocomplete, and a category for the bank inventory.
+If a file can't be downloaded or an item isn't known, everything simply carries on with the typed text.
 """
 from __future__ import annotations
 
@@ -15,9 +16,16 @@ import time
 import urllib.request
 from pathlib import Path
 
-SOURCE = "https://raw.githubusercontent.com/amyklindley/mo-betta-crafts/main/recipes.json"
-CACHE = Path(__file__).resolve().parent / "data" / "recipes.json"
+SOURCES = {
+    "recipes.json": "https://raw.githubusercontent.com/amyklindley/mo-betta-crafts/main/recipes.json",
+    "items.json": "https://raw.githubusercontent.com/amyklindley/mo-betta-quests/main/items.json",
+}
+DATA = Path(__file__).resolve().parent / "data"
+CACHE = DATA / "recipes.json"  # items.json sits next to it
 MAX_AGE = 24 * 3600
+
+CATEGORIES = ["⚔️ Weapons", "🛡️ Armor", "💍 Jewelry", "🎒 Bags", "🧪 Potions", "🍖 Food & Drink",
+              "📜 Spells & Scrolls", "🪨 Crafting materials", "📦 Other"]
 
 log = logging.getLogger("castle.recipes")
 
@@ -31,6 +39,7 @@ class Recipes:
         self.cache = cache
         self.by_name: dict[str, list[dict]] = {}
         self.materials: dict[str, str] = {}  # norm(name) -> wiki spelling, for everything recipes use
+        self.items: dict[str, dict] = {}     # norm(name) -> wiki item record
 
     def load(self, recipes: list[dict]) -> None:
         by_name: dict[str, list[dict]] = {}
@@ -43,23 +52,83 @@ class Recipes:
                     materials.setdefault(norm(ing["name"]), ing["name"])
         self.by_name, self.materials = by_name, materials
 
+    def load_items(self, items: list[dict]) -> None:
+        self.items = {norm(it["name"]): it for it in items if it.get("name")}
+
     def refresh(self) -> None:
-        """Download a fresh copy if the cached one is missing or a day old, then load whatever we have."""
-        try:
-            stale = not self.cache.exists() or time.time() - self.cache.stat().st_mtime > MAX_AGE
-            if stale:
-                self.cache.parent.mkdir(exist_ok=True)
-                with urllib.request.urlopen(SOURCE, timeout=30) as resp:
-                    body = resp.read()
-                json.loads(body)  # don't replace a good cache with a broken download
-                self.cache.write_bytes(body)
-        except Exception as e:  # network trouble just means we keep yesterday's copy
-            log.warning("recipes download failed: %s", e)
+        """Download fresh copies of any file that's missing or a day old, then load whatever we have."""
+        for name, url in SOURCES.items():
+            path = self.cache.parent / name
+            try:
+                if not path.exists() or time.time() - path.stat().st_mtime > MAX_AGE:
+                    path.parent.mkdir(exist_ok=True)
+                    with urllib.request.urlopen(url, timeout=60) as resp:
+                        body = resp.read()
+                    json.loads(body)  # don't replace a good cache with a broken download
+                    path.write_bytes(body)
+            except Exception as e:  # network trouble just means we keep yesterday's copy
+                log.warning("%s download failed: %s", name, e)
         try:
             self.load(json.loads(self.cache.read_text("utf-8"))["recipes"])
             log.info("recipes loaded: %d names", len(self.by_name))
         except (OSError, ValueError, KeyError) as e:
             log.warning("no recipes available: %s", e)
+        try:
+            self.load_items(json.loads((self.cache.parent / "items.json").read_text("utf-8"))["items"])
+            log.info("items loaded: %d", len(self.items))
+        except (OSError, ValueError, KeyError) as e:
+            log.warning("no item list available: %s", e)
+
+    # ---------------------------------------------------------------- items (bank, spelling)
+
+    def item_name(self, text: str) -> str:
+        """The wiki's spelling of an item name if we know it (allowing a plural 's'), else the text as typed."""
+        text = " ".join(text.split())
+        q = norm(text)
+        for key in (q, q[:-1] if q.endswith("s") else None, q[:-2] if q.endswith("es") else None):
+            if not key:
+                continue
+            if key in self.items:
+                return self.items[key]["name"]
+            if key in self.materials:
+                return self.materials[key]
+            if key in self.by_name:
+                return self.by_name[key][0]["name"]
+        return text
+
+    def item_choices(self, query: str, limit: int = 25) -> list[str]:
+        keys = rank(query, list(self.items) + [k for k in self.materials if k not in self.items], limit)
+        return [self.items[k]["name"] if k in self.items else self.materials[k] for k in keys]
+
+    def icon(self, name: str) -> str | None:
+        it = self.items.get(norm(name))
+        return (it.get("image") or None) if it else None
+
+    def category(self, name: str) -> str:
+        """Which bank section an item belongs in, from its wiki slot, recipe skill or role in recipes."""
+        q = norm(name)
+        it = self.items.get(q)
+        slot = (it or {}).get("slot", "").upper()
+        if any(s in slot for s in ("PRIMARY", "SECONDARY", "RANGE", "AMMO")):
+            return "⚔️ Weapons"
+        if any(s in slot for s in ("BAG", "BACKPACK", "BELT")):
+            return "🎒 Bags"
+        if any(s in slot for s in ("NECK", "FINGER", "EAR")):
+            return "💍 Jewelry"
+        if slot:
+            return "🛡️ Armor"
+        skills = {r.get("skill", "") for r in self.by_name.get(q, [])}
+        words = set(q.split())
+        if q.startswith(("spell ", "scroll", "tome ", "song ", "enchant ")) or "Enchanting" in skills:
+            return "📜 Spells & Scrolls"
+        if skills & {"Alchemy", "Poison Making"} or words & {"potion", "elixir", "tonic", "salve", "poison", "philter"}:
+            return "🧪 Potions"
+        if skills & {"Cooking", "Brewing", "Baking"} or words & {"ale", "wine", "whiskey", "mead", "water", "bread",
+                                                                 "stew", "pie", "rations", "meat", "milk", "cheese"}:
+            return "🍖 Food & Drink"
+        if q in self.materials:
+            return "🪨 Crafting materials"
+        return "📦 Other"
 
     def find(self, item: str) -> dict | None:
         """The recipe for an item name, allowing small typos and a trailing plural 's'."""
