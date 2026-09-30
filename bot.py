@@ -149,7 +149,8 @@ async def ensure_tags(forum: discord.ForumChannel) -> list[str]:
 
 
 async def post_panel(forum: discord.ForumChannel, old_thread_id: int | None) -> tuple[discord.Thread, list[str]]:
-    """Put the button panel in a pinned, locked post at the top of the forum (reusing the old one if it's there)."""
+    """Put the button panel in a pinned post at the top of the forum (reusing the old one if it's there).
+    Not locked: Discord lets only moderators press buttons in a locked post."""
     problems = []
     thread = forum.guild.get_thread(old_thread_id) if old_thread_id else None
     if thread is None and old_thread_id:
@@ -167,9 +168,9 @@ async def post_panel(forum: discord.ForumChannel, old_thread_id: int | None) -> 
         posted = await forum.create_thread(name=ui.PANEL_TITLE, content=ui.PANEL_TEXT, view=ui.Panel())
         thread = posted.thread
     try:
-        await thread.edit(pinned=True, locked=True, archived=False)
+        await thread.edit(pinned=True, locked=False, archived=False)
     except discord.HTTPException:
-        problems.append("couldn't pin and lock the panel post (the bot needs Manage Threads)")
+        problems.append("couldn't pin the panel post (the bot needs Manage Threads)")
     return thread, problems
 
 
