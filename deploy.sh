@@ -45,7 +45,7 @@ if [ ! -f "$DIR/.env" ]; then
   echo "This is a different bot from Mo Betta, so it's a different token. Nothing shows while you paste; press Enter."
   read -r -s -p "DISCORD_TOKEN: " TOKEN </dev/tty
   echo
-  read -r -p "GUILD_ID (the guild's Discord server id): " GUILD </dev/tty
+  read -r -p "GUILD_ID (server id; for several, separate with commas): " GUILD </dev/tty
   sudo -u "$USER_NAME" bash -c "umask 077; printf 'DISCORD_TOKEN=%s\nGUILD_ID=%s\n' '$TOKEN' '$GUILD' > '$DIR/.env'"
   echo "-- wrote $DIR/.env (readable only by $USER_NAME)"
 fi
