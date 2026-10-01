@@ -135,6 +135,10 @@ def embed(t: Ticket) -> discord.Embed:
             fc = f.get("for_craft")
             if fc:
                 e.add_field(name="Gathering for a craft", value=f"{fc.get('quantity', '')}x {fc.get('item', '')}", inline=False)
+        if f.get("raw"):
+            e.add_field(name="⛏️ What to actually gather", value=_clip(f["raw"], 1000), inline=False)
+        if f.get("crafted_first"):
+            e.add_field(name="🧵 Crafted along the way", value=_clip(f["crafted_first"], 1000), inline=False)
         if f.get("recipe"):
             e.add_field(name=f"📖 Recipe: {f.get('recipe_name', '')}", value=_clip(f["recipe"], 1000), inline=False)
     elif t.kind == "donate":
@@ -238,6 +242,19 @@ class GatherForm(ui.Modal):
                   "needed_by": self.needed_by.values[0], "purpose": self.purpose.values[0]}
         if self.for_craft:
             fields["for_craft"] = self.for_craft
+            top = recipes.find(self.for_craft.get("item", ""))
+            if top:
+                b = recipes.breakdown(top, recipe_mod.parse_quantity(self.for_craft.get("quantity", "")))
+                if b.made:
+                    fields["crafted_first"] = b.made_line()
+        else:
+            # someone asked for a thing that is itself crafted (canvas, bars): show what it's made from
+            made = recipes.find(item) if "\n" not in item else None
+            if made:
+                b = recipes.breakdown(made, recipe_mod.parse_quantity(fields["quantity"]))
+                fields["raw"] = f"{made['name']} is crafted ({made.get('skill', '?')}). Raw materials: " + ", ".join(b.raw_lines())
+                if b.made:
+                    fields["crafted_first"] = b.made_line()
         await open_ticket(i, "gather", fields, character)
 
 
@@ -318,10 +335,13 @@ async def send_to_gathering(i: discord.Interaction, fields: dict, character: str
                             qty: int | None) -> None:
     s = store.settings(i.guild_id)
     if recipe:
-        shopping = [line for line in recipe_mod.shopping_list(recipe, qty) if not line.endswith("(tool)")]
-        item, quantity = "\n".join(shopping), "see list"
+        b = recipes.breakdown(recipe, qty)
+        item, quantity = "\n".join(b.raw_lines()), "see list"
         needs = (f"\n\nHere's what **{fields['quantity']}x {recipe['name']}** takes ({recipe.get('skill', '')}):\n"
                  + "\n".join(f"• {x}" for x in recipe_mod.shopping_list(recipe, qty)))
+        if b.made:
+            needs += ("\n\nSome of that is crafted too, so the gathering request asks for the raw materials:\n"
+                      + "\n".join(f"• {x}" for x in b.raw_lines()))
     else:
         item, quantity, needs = f"Materials for {fields['item']}", fields["quantity"], ""
     await i.response.send_message(

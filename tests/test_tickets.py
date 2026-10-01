@@ -356,7 +356,7 @@ def test_craft_without_mats_redirects_to_gathering(env):
     i2 = interaction(member)
     run(view.go.callback(i2))
     g = i2.response.send_modal.call_args.args[0]
-    assert g.item.default == "5 x Iron Bar\n10 x Coal"  # tools left off the gathering list
+    assert g.item.default == "10 x Coal\n5 x Iron Bar"  # tools left off the gathering list
     assert g.for_craft == {"item": "Iron Rivets", "quantity": "20", "needed_by": "ASAP"}
     assert [o.value for o in g.purpose.options if o.default] == ["craft"]
 

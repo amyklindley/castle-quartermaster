@@ -14,6 +14,7 @@ import math
 import re
 import time
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 
 SOURCES = {
@@ -32,6 +33,19 @@ log = logging.getLogger("castle.recipes")
 
 def norm(s: str) -> str:
     return re.sub(r"[^a-z0-9 ]+", "", s.lower().replace("'", "")).strip()
+
+
+@dataclass
+class Breakdown:
+    raw: list[tuple[str, int]]         # (item, how many) to gather, loot or buy
+    made: list[tuple[str, int, str]]   # (item, how many, skill) crafted along the way
+    tools: list[str]
+
+    def raw_lines(self) -> list[str]:
+        return [f"{q} x {n}" for n, q in self.raw]
+
+    def made_line(self) -> str:
+        return ", ".join(f"{q} x {n}" + (f" ({sk})" if sk else "") for n, q, sk in self.made)
 
 
 class Recipes:
@@ -140,6 +154,44 @@ class Recipes:
                 return self.by_name[key][0]
         close = difflib.get_close_matches(q, self.by_name.keys(), n=1, cutoff=0.88)
         return self.by_name[close[0]][0] if close else None
+
+    # ---------------------------------------------------------------- breaking a craft down to raw materials
+
+    def breakdown(self, recipe: dict, quantity: int | None) -> Breakdown:
+        """Everything needed to make `quantity` of a recipe, followed down through crafted ingredients
+        (canvas, bars, thread...) until only things you gather, loot or buy are left.
+
+        Needs are added up per item before each level is expanded, so two parts that both use Iron Bars
+        share combines instead of each rounding up on their own.
+        """
+        makes = max(int(recipe.get("makes") or 1), 1)
+        need: dict[str, int] = {}
+        made: dict[str, tuple[int, str]] = {}
+        tools: list[str] = []
+
+        def use(r: dict, combines: int) -> None:
+            for ing in r.get("ingredients", []):
+                if ing.get("tool"):
+                    if ing["name"] not in tools:
+                        tools.append(ing["name"])
+                else:
+                    need[ing["name"]] = need.get(ing["name"], 0) + int(ing.get("qty") or 1) * combines
+
+        use(recipe, math.ceil((quantity or makes) / makes))
+        top = norm(recipe["name"])
+        for _ in range(8):  # deep enough for any real chain, and a stop for recipes that loop back on themselves
+            crafted = [n for n in need if norm(n) in self.by_name and norm(n) != top]
+            if not crafted:
+                break
+            for name in crafted:
+                qty = need.pop(name)
+                sub = self.by_name[norm(name)][0]
+                sub_makes = max(int(sub.get("makes") or 1), 1)
+                combines = math.ceil(qty / sub_makes)
+                had = made.get(name, (0, ""))[0]
+                made[name] = (had + qty, sub.get("skill", ""))
+                use(sub, combines)
+        return Breakdown(raw=sorted(need.items()), made=[(n, q, sk) for n, (q, sk) in made.items()], tools=tools)
 
     # ---------------------------------------------------------------- autocomplete for /craft and /gather
 
