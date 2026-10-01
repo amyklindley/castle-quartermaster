@@ -86,14 +86,21 @@ class Recipes:
     def vendors(self, item: str, limit: int = 3) -> list[str]:
         """Who sells an item, as "Name (Zone: where they stand)". Empty if no vendor is known."""
         q = norm(item)
-        found: dict[str, dict | None] = {norm(n["name"]): n for n in self.sellers.get(q, [])}
+        def bare(name: str) -> str:  # the wiki titles some NPCs "A poison maker (Night Harbor)"
+            return re.sub(r"\s*\([^)]*\)\s*$", "", name).strip()
+
+        found: dict[str, dict] = {}
+        for n in self.sellers.get(q, []):
+            found.setdefault(norm(bare(n["name"])) + "|" + n.get("zone", "").lower(), n)
+        known = {k.split("|")[0] for k in found}
         for name in (self.items.get(q) or {}).get("sold_by", []):
-            if name.lower() not in self.zones and norm(name) not in found:
-                found[norm(name)] = self.npcs.get(norm(name)) or {"name": name}
+            if name.lower() not in self.zones and norm(bare(name)) not in known:
+                known.add(norm(bare(name)))
+                found[norm(bare(name)) + "|"] = self.npcs.get(norm(name)) or {"name": name}
         out = []
         for n in list(found.values())[:limit]:
             where = ": ".join(x for x in (n.get("zone", ""), " ".join(n.get("location", "").split())[:60]) if x)
-            out.append(f"{n['name']} ({where})" if where else n["name"])
+            out.append(f"{bare(n['name'])} ({where})" if where else bare(n["name"]))
         return out
 
     def refresh(self) -> None:
