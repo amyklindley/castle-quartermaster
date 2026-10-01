@@ -65,6 +65,7 @@ run the same command again (it's safe to re-run any time, e.g. to change a role)
 | `/tickets mine` | anyone | Your open requests |
 | `/bank show [category]`, `/bank find <item>`, `/bank history [item]` | anyone | What's in the bank |
 | `/bank add`, `/bank remove`, `/bank set`, `/bank board` | bank role / officers | Change the inventory by hand, redraw the board |
+| `/bank export` | bank role / officers | Download the inventory and full history as spreadsheets (a backup you hold) |
 | `/tickets queue [kind]` | anyone | Everything open, optionally just one kind |
 
 Only admins see `/tickets setup` by default. You can change who sees what under Server Settings →

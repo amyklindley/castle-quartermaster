@@ -72,4 +72,14 @@ copy `.env.example` to `.env` and fill it in, then `run.bat`.
 | `recipes.py` | wiki recipes and items: lookup, spelling, autocomplete, bank categories |
 | `tests/` | offline tests with fake Discord objects: `.venv\Scripts\python -m pytest -q` |
 
-Back up `tickets.db` if you care about history; everything else can be reinstalled.
+## The data, and keeping it
+
+Everything the bot knows (tickets, settings, the bank ledger) is in one file, `tickets.db`, next to `bot.py`.
+Updates never touch it. Three layers keep it safe:
+
+- **Daily copies**: the bot writes `backups/tickets-YYYY-MM-DD.db` once a day and keeps 60 days.
+- **Before every update**: `deploy.sh` copies `tickets.db` to `backups/before-update-….db` first.
+- **Off the server**: `/bank export` hands a banker two spreadsheets, the inventory and the full ledger. The
+  ledger alone is enough to rebuild the bank, so saving one now and then covers even losing the whole VM.
+
+To restore: stop the service, copy a backup over `tickets.db`, start the service.

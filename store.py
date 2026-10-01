@@ -250,6 +250,30 @@ class Store:
             " ORDER BY item LIMIT ?", (guild_id, f"%{query}%", limit)).fetchall()
         return [r["item"] for r in rows]
 
+    def bank_ledger_all(self, guild_id: int) -> list[LedgerEntry]:
+        rows = self.db.execute("SELECT * FROM bank_ledger WHERE guild_id = ? ORDER BY id", (guild_id,)).fetchall()
+        return [LedgerEntry(**dict(r)) for r in rows]
+
+    # ---------------------------------------------------------------- backups
+
+    def backup(self, folder: Path, keep: int = 60) -> Path | None:
+        """Write today's copy of the whole database to `folder` (once a day; None if it's already there),
+        keeping the newest `keep` days. Uses SQLite's own backup, so it's safe while the bot is running."""
+        folder.mkdir(parents=True, exist_ok=True)
+        dest = folder / f"tickets-{time.strftime('%Y-%m-%d')}.db"
+        if dest.exists():
+            return None
+        tmp = dest.with_suffix(".tmp")
+        out = sqlite3.connect(str(tmp))
+        try:
+            self.db.backup(out)
+        finally:
+            out.close()
+        tmp.replace(dest)
+        for old in sorted(folder.glob("tickets-*.db"))[:-keep]:
+            old.unlink()
+        return dest
+
     def bank_history(self, guild_id: int, item: str | None = None, limit: int = 15) -> list[LedgerEntry]:
         sql, args = "SELECT * FROM bank_ledger WHERE guild_id = ?", [guild_id]
         if item:

@@ -24,6 +24,13 @@ fi
 sudo apt-get update -qq </dev/null
 sudo apt-get install -y -qq python3 python3-venv git >/dev/null </dev/null
 
+if [ -f "$DIR/tickets.db" ]; then
+  # never touch the live data without a copy first
+  sudo -u "$USER_NAME" mkdir -p "$DIR/backups"
+  sudo -u "$USER_NAME" cp "$DIR/tickets.db" "$DIR/backups/before-update-$(date +%Y%m%d-%H%M%S).db"
+  echo "-- saved a copy of tickets.db in $DIR/backups"
+fi
+
 if [ -d "$DIR/.git" ]; then
   echo "-- updating $DIR"
   sudo -u "$USER_NAME" git -C "$DIR" pull -q
@@ -79,5 +86,5 @@ echo
 echo "Done. Useful later:"
 echo "  sudo journalctl -u $SVC -f        follow the bot's log"
 echo "  sudo systemctl restart $SVC       restart it"
-echo "  cp $DIR/tickets.db ~/tickets-backup.db    back up the tickets"
+echo "  ls $DIR/backups                    daily copies of the tickets and bank (60 days kept)"
 echo "  curl -fsSL $REPO/raw/main/deploy.sh -o deploy.sh && bash deploy.sh    update to the latest code"

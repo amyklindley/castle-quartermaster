@@ -7,6 +7,8 @@ under the request panel. Anyone can also ask /bank show or /bank find.
 """
 from __future__ import annotations
 
+import csv
+import io
 import logging
 import re
 from datetime import datetime, timezone
@@ -125,6 +127,22 @@ async def refresh_board(client: discord.Client, store: Store, wiki: Recipes, s: 
     except discord.HTTPException as e:
         log.warning("couldn't update the bank board: %s", e)
         return False
+
+
+def export_csv(store: Store, wiki: Recipes, guild_id: int) -> tuple[str, str]:
+    """(inventory.csv, ledger.csv) as text: what's in the bank now, and every movement ever recorded.
+    The ledger alone is enough to rebuild the inventory."""
+    inv, led = io.StringIO(), io.StringIO()
+    w = csv.writer(inv)
+    w.writerow(["item", "quantity", "section"])
+    for item, n in store.bank_stock(guild_id):
+        w.writerow([item, n, wiki.category(item).split(" ", 1)[-1]])
+    w = csv.writer(led)
+    w.writerow(["id", "when_utc", "item", "change", "by_user_id", "ticket", "note"])
+    for e in store.bank_ledger_all(guild_id):
+        when = datetime.fromtimestamp(e.created_at, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
+        w.writerow([e.id, when, e.item, e.delta, e.actor_id, e.ticket_id or "", e.note])
+    return inv.getvalue(), led.getvalue()
 
 
 def history_lines(entries, wiki: Recipes | None = None) -> str:

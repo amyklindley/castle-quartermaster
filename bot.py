@@ -10,6 +10,7 @@ Setup (once):
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
 import os
 from pathlib import Path
@@ -64,6 +65,12 @@ async def housekeeping() -> None:
     await client.wait_until_ready()
     while not client.is_closed():
         await asyncio.to_thread(recipes.refresh)
+        try:
+            saved = store.backup(HERE / "backups")
+            if saved:
+                log.info("daily backup written: %s", saved.name)
+        except Exception as e:  # a failed backup must never stop the bot, but it should be loud in the log
+            log.error("BACKUP FAILED: %s", e)
         for guild in client.guilds:
             for t in store.active(guild.id):
                 thread = guild.get_thread(t.thread_id)
@@ -425,6 +432,17 @@ async def bank_board(i: discord.Interaction) -> None:
         ok = await bank.refresh_board(client, store, recipes, s)
         await i.response.send_message("Board updated." if ok else "Couldn't post the board; check the bot can send "
                                       "messages and embeds in the bank channel (or run `/tickets setup`).", ephemeral=True)
+
+
+@bank_cmds.command(name="export", description="Bankers: download the inventory and the full history as spreadsheets")
+async def bank_export(i: discord.Interaction) -> None:
+    if await _bank_staff(i):
+        inv, led = bank.export_csv(store, recipes, i.guild_id)
+        day = discord.utils.utcnow().strftime("%Y-%m-%d")
+        files = [discord.File(io.BytesIO(inv.encode("utf-8-sig")), filename=f"bank-inventory-{day}.csv"),
+                 discord.File(io.BytesIO(led.encode("utf-8-sig")), filename=f"bank-ledger-{day}.csv")]
+        await i.response.send_message("Here's the bank as of now. The ledger has every movement ever recorded, so it's "
+                                      "enough to rebuild the inventory. Keep a copy somewhere safe.", files=files, ephemeral=True)
 
 
 for _cmd in (bank_add, bank_remove, bank_set, bank_history):

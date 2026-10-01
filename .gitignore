@@ -3,6 +3,7 @@
 
 # the live ticket database and downloaded recipe data
 tickets.db
+backups/
 data/
 __pycache__/
 .venv/
