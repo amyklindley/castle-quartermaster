@@ -105,6 +105,12 @@ def _clip_lines(s: str, n: int) -> str:
     return out
 
 
+def _span(hours: int) -> str:
+    if hours % 24 == 0:
+        return "a day" if hours == 24 else f"{hours // 24} days"
+    return "an hour" if hours == 1 else f"{hours} hours"
+
+
 def title(t: Ticket) -> str:
     k, f = KINDS[t.kind], t.fields
     if t.kind in ("craft", "gather"):
@@ -643,6 +649,9 @@ async def _apply(i: discord.Interaction, t: Ticket, note: str, dm: str | None) -
     if dm and i.user.id != t.requester_id:
         reached = await _dm(i.client, t.requester_id, f"{dm}\n{thread.jump_url}")
     ping = f" <@{t.requester_id}>" if not reached else ""
+    hours = store.settings(t.guild_id).cleanup_after
+    if not t.active and hours:
+        note += f"\n🧹 This post tidies itself away in about {_span(hours)}."
     try:
         await thread.send(note + ping, allowed_mentions=discord.AllowedMentions(users=[discord.Object(t.requester_id)]))
     except discord.HTTPException as e:

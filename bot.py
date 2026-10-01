@@ -13,6 +13,7 @@ import asyncio
 import io
 import logging
 import os
+import time
 from pathlib import Path
 
 import discord
@@ -59,11 +60,40 @@ tree = app_commands.CommandTree(client)
 tickets = app_commands.Group(name="tickets", description="Crafting, gathering and guild bank requests", guild_only=True)
 
 
+async def cleanup_closed(guild: discord.Guild) -> int:
+    """Delete the posts of tickets that were finished or cancelled long enough ago. The tickets themselves
+    (and the bank ledger) stay in the database; only the forum post goes."""
+    hours = store.settings(guild.id).cleanup_after
+    if not hours:
+        return 0
+    gone = 0
+    for t in store.closed_before(guild.id, time.time() - hours * 3600):
+        try:
+            thread = guild.get_thread(t.thread_id) or await guild.fetch_channel(t.thread_id)
+            await thread.delete()
+        except discord.NotFound:
+            pass  # already deleted by hand
+        except discord.HTTPException as e:
+            log.warning("couldn't delete the post for ticket #%d: %s", t.id, e)
+            continue
+        store.forget_thread(t.id)
+        gone += 1
+    return gone
+
+
 async def housekeeping() -> None:
-    """Every few hours: refresh the recipe list, and bring back any open ticket Discord archived for being
-    quiet a week, so open requests stay at the top of the forum instead of sinking out of view."""
+    """Every hour: tidy away posts of long-closed tickets, refresh the wiki data and the daily backup (both
+    only do work when they're due), and bring back any open ticket Discord archived for being quiet a week,
+    so open requests stay at the top of the forum instead of sinking out of view."""
     await client.wait_until_ready()
     while not client.is_closed():
+        for guild in client.guilds:
+            try:
+                gone = await cleanup_closed(guild)
+                if gone:
+                    log.info("tidied away %d closed post(s) in %s", gone, guild.name)
+            except Exception as e:
+                log.error("cleanup failed in %s: %s", guild.name, e)
         await asyncio.to_thread(recipes.refresh)
         try:
             saved = store.backup(HERE / "backups")
@@ -85,7 +115,7 @@ async def housekeeping() -> None:
                     store.set_status(t.id, CANCELLED, reason="post deleted")
                 except discord.HTTPException as e:
                     log.warning("couldn't check ticket #%d: %s", t.id, e)
-        await asyncio.sleep(6 * 3600)
+        await asyncio.sleep(3600)
 
 
 @client.event
@@ -198,11 +228,13 @@ def missing_perms(forum: discord.ForumChannel) -> list[str]:
     bank_forum="Forum for bank donations and requests, with the bank panel and inventory at the top (optional)",
     officer="Role that can act on any ticket and open guild requisitions (optional)",
     bank_channel="Text channel for the inventory board instead of the bank panel (optional)",
+    delete_closed_after="Hours until a finished or cancelled post is deleted (default 24; 0 keeps them forever)",
 )
 @app_commands.default_permissions(manage_guild=True)
 async def setup(i: discord.Interaction, forum: discord.ForumChannel, crafter: discord.Role, gatherer: discord.Role,
                 banker: discord.Role, bank_forum: discord.ForumChannel | None = None,
-                officer: discord.Role | None = None, bank_channel: discord.TextChannel | None = None) -> None:
+                officer: discord.Role | None = None, bank_channel: discord.TextChannel | None = None,
+                delete_closed_after: app_commands.Range[int, 0, 720] | None = None) -> None:
     await i.response.defer(ephemeral=True, thinking=True)
     for f in (forum, bank_forum):
         if f and (missing := missing_perms(f)):
@@ -220,6 +252,8 @@ async def setup(i: discord.Interaction, forum: discord.ForumChannel, crafter: di
         s.bank_channel_id, s.bank_message_id = bank_channel.id, None  # the board moves; post a fresh one there
     if not bank_channel and s.bank_channel_id:
         s.bank_channel_id, s.bank_message_id = None, None
+    if delete_closed_after is not None:
+        s.cleanup_hours = delete_closed_after
 
     notes = []
     plan = [(forum, ("craft", "gather") if s.bank_forum_id else tuple(ui.KINDS))]
@@ -274,6 +308,8 @@ async def setup(i: discord.Interaction, forum: discord.ForumChannel, crafter: di
         f"All set. {where}.\n"
         f"🔨 Crafting → {crafter.mention} · 🌿 Gathering → {gatherer.mention} · 📦🏦 Bank → {banker.mention}"
         + (f" · Officers: {officer.mention}" if officer else "")
+        + (f"\n🧹 Finished and cancelled posts are deleted after {s.cleanup_after} hours."
+           if s.cleanup_after else "\n🧹 Finished posts are kept (archived), not deleted.")
         + ("\n\n" + "\n".join(f"⚠️ {n}" for n in notes) if notes else ""),
         ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 

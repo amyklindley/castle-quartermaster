@@ -70,7 +70,10 @@ MIGRATIONS = [
     ("settings", "bank_message_id", "INTEGER"),
     ("settings", "bank_forum_id", "INTEGER"),
     ("settings", "bank_panel_thread_id", "INTEGER"),
+    ("settings", "cleanup_hours", "INTEGER"),
 ]
+
+DEFAULT_CLEANUP_HOURS = 24
 
 
 @dataclass
@@ -108,6 +111,11 @@ class Settings:
     bank_message_id: int | None = None
     bank_forum_id: int | None = None     # separate forum for donations and bank requests (else the main forum)
     bank_panel_thread_id: int | None = None
+    cleanup_hours: int | None = None     # delete closed posts this long after closing; None = default, 0 = keep
+
+    @property
+    def cleanup_after(self) -> int:
+        return DEFAULT_CLEANUP_HOURS if self.cleanup_hours is None else self.cleanup_hours
 
     def forum_for(self, kind: str) -> int | None:
         return (self.bank_forum_id or self.forum_id) if kind in ("donate", "bank") else self.forum_id
@@ -187,6 +195,18 @@ class Store:
         )
         self.db.commit()
         return self.get(ticket_id)
+
+    def closed_before(self, guild_id: int, cutoff: float) -> list[Ticket]:
+        """Done or cancelled tickets closed before `cutoff` whose post is still up."""
+        rows = self.db.execute(
+            "SELECT * FROM tickets WHERE guild_id = ? AND status IN ('done', 'cancelled') AND thread_id IS NOT NULL"
+            " AND closed_at IS NOT NULL AND closed_at < ? ORDER BY closed_at", (guild_id, cutoff)).fetchall()
+        return [self._ticket(r) for r in rows]
+
+    def forget_thread(self, ticket_id: int) -> None:
+        """The post is gone; the ticket itself stays on record."""
+        self.db.execute("UPDATE tickets SET thread_id = NULL, message_id = NULL WHERE id = ?", (ticket_id,))
+        self.db.commit()
 
     def mine(self, guild_id: int, user_id: int, limit: int = 25) -> list[Ticket]:
         rows = self.db.execute(

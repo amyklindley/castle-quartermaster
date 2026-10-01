@@ -45,6 +45,8 @@ In any channel, type:
 - **banker**: who handles bank donations and requests (it can be the officer role).
 - **bank_forum** (optional): the forum for donations and bank requests. It gets its own pinned **🏦 Guild Bank**
   post with the two bank buttons and the live inventory board right under them.
+- **delete_closed_after** (optional): hours until a finished or cancelled post is deleted. Default 24; 0 keeps
+  them forever. Bank history is never deleted; only the forum post goes.
 - **bank_channel** (optional): a plain text channel for the inventory board instead, if you'd rather it not sit
   in the bank forum (the bot needs Send Messages and Embed Links there).
 - **officer** (optional): can act on any ticket and open guild requisitions ("Guild: raid consumables / equipment")

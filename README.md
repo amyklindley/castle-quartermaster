@@ -39,8 +39,10 @@ Other touches:
   officers see, so a guild requisition is visibly different from someone buying mats.
 - The form remembers each member's character name.
 - Two crafters can't claim the same ticket; only the claimer (or an officer) can unclaim.
-- Closed posts are archived; open ones that Discord auto-archives after a quiet week are brought back every
-  few hours so they stay visible.
+- Finished and cancelled posts are deleted a day after they close (the wait leaves time to reopen, or to press
+  **Open the crafting request**); `delete_closed_after` in setup changes the wait, and 0 keeps posts forever.
+  The ticket record and the bank ledger stay in the database either way. Open posts that Discord auto-archives
+  after a quiet week are brought back so they stay visible.
 - Donation screenshots are re-posted by the bot, so they don't expire.
 
 ## Setup
