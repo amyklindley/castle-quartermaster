@@ -20,6 +20,7 @@ from pathlib import Path
 SOURCES = {
     "recipes.json": "https://raw.githubusercontent.com/amyklindley/mo-betta-crafts/main/recipes.json",
     "items.json": "https://raw.githubusercontent.com/amyklindley/mo-betta-quests/main/items.json",
+    "npcs.json": "https://raw.githubusercontent.com/amyklindley/mo-betta-quests/main/npcs.json",
 }
 DATA = Path(__file__).resolve().parent / "data"
 CACHE = DATA / "recipes.json"  # items.json sits next to it
@@ -54,6 +55,9 @@ class Recipes:
         self.by_name: dict[str, list[dict]] = {}
         self.materials: dict[str, str] = {}  # norm(name) -> wiki spelling, for everything recipes use
         self.items: dict[str, dict] = {}     # norm(name) -> wiki item record
+        self.sellers: dict[str, list[dict]] = {}  # norm(item) -> merchant NPC records that sell it
+        self.npcs: dict[str, dict] = {}      # norm(name) -> NPC record
+        self.zones: set[str] = set()         # lower-case zone names (item pages list vendors under zone headers)
 
     def load(self, recipes: list[dict]) -> None:
         by_name: dict[str, list[dict]] = {}
@@ -68,6 +72,29 @@ class Recipes:
 
     def load_items(self, items: list[dict]) -> None:
         self.items = {norm(it["name"]): it for it in items if it.get("name")}
+
+    def load_npcs(self, npcs: list[dict]) -> None:
+        sellers: dict[str, list[dict]] = {}
+        for n in npcs:
+            for it in n.get("sells", []):
+                if isinstance(it, str):
+                    sellers.setdefault(norm(it), []).append(n)
+        self.sellers = sellers
+        self.npcs = {norm(n["name"]): n for n in npcs if n.get("name")}
+        self.zones = {z.strip().lower() for n in npcs for z in n.get("zone", "").split(",") if z.strip()}
+
+    def vendors(self, item: str, limit: int = 3) -> list[str]:
+        """Who sells an item, as "Name (Zone: where they stand)". Empty if no vendor is known."""
+        q = norm(item)
+        found: dict[str, dict | None] = {norm(n["name"]): n for n in self.sellers.get(q, [])}
+        for name in (self.items.get(q) or {}).get("sold_by", []):
+            if name.lower() not in self.zones and norm(name) not in found:
+                found[norm(name)] = self.npcs.get(norm(name)) or {"name": name}
+        out = []
+        for n in list(found.values())[:limit]:
+            where = ": ".join(x for x in (n.get("zone", ""), " ".join(n.get("location", "").split())[:60]) if x)
+            out.append(f"{n['name']} ({where})" if where else n["name"])
+        return out
 
     def refresh(self) -> None:
         """Download fresh copies of any file that's missing or a day old, then load whatever we have."""
@@ -92,6 +119,12 @@ class Recipes:
             log.info("items loaded: %d", len(self.items))
         except (OSError, ValueError, KeyError) as e:
             log.warning("no item list available: %s", e)
+        try:
+            data = json.loads((self.cache.parent / "npcs.json").read_text("utf-8"))
+            self.load_npcs(data["npcs"] if isinstance(data, dict) else data)
+            log.info("npcs loaded: %d, %d items with a known vendor", len(self.npcs), len(self.sellers))
+        except (OSError, ValueError, KeyError) as e:
+            log.warning("no NPC list available: %s", e)
 
     # ---------------------------------------------------------------- items (bank, spelling)
 

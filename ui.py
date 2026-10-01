@@ -95,6 +95,16 @@ def _clip(s: str, n: int) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
+def _clip_lines(s: str, n: int) -> str:
+    """Like _clip but keeps line breaks, dropping whole lines that don't fit."""
+    out = ""
+    for line in s.split("\n"):
+        if len(out) + len(line) + 1 > n - 2:
+            return out + "\n…"
+        out += ("\n" if out else "") + line
+    return out
+
+
 def title(t: Ticket) -> str:
     k, f = KINDS[t.kind], t.fields
     if t.kind in ("craft", "gather"):
@@ -137,6 +147,8 @@ def embed(t: Ticket) -> discord.Embed:
                 e.add_field(name="Gathering for a craft", value=f"{fc.get('quantity', '')}x {fc.get('item', '')}", inline=False)
         if f.get("raw"):
             e.add_field(name="⛏️ What to actually gather", value=_clip(f["raw"], 1000), inline=False)
+        if f.get("buy"):
+            e.add_field(name="🛒 Sold by vendors (buy these, don't farm them)", value=_clip_lines(f["buy"], 1000), inline=False)
         if f.get("crafted_first"):
             e.add_field(name="🧵 Crafted along the way", value=_clip(f["crafted_first"], 1000), inline=False)
         if f.get("recipe"):
@@ -255,6 +267,13 @@ class GatherForm(ui.Modal):
                 fields["raw"] = f"{made['name']} is crafted ({made.get('skill', '?')}). Raw materials: " + ", ".join(b.raw_lines())
                 if b.made:
                     fields["crafted_first"] = b.made_line()
+        bought = []
+        for name, _ in bank.parse_lines(item, recipes):
+            sellers = recipes.vendors(name)
+            if sellers:
+                bought.append(f"**{name}**: {', '.join(sellers)}")
+        if bought:
+            fields["buy"] = "\n".join(bought)
         await open_ticket(i, "gather", fields, character)
 
 
@@ -342,6 +361,9 @@ async def send_to_gathering(i: discord.Interaction, fields: dict, character: str
         if b.made:
             needs += ("\n\nSome of that is crafted too, so the gathering request asks for the raw materials:\n"
                       + "\n".join(f"• {x}" for x in b.raw_lines()))
+        shops = [f"• **{n}**: {recipes.vendors(n, limit=1)[0]}" for n, _ in b.raw if recipes.vendors(n, limit=1)]
+        if shops:
+            needs += "\n\n🛒 You can buy these from a vendor yourself:\n" + "\n".join(shops[:8])
     else:
         item, quantity, needs = f"Materials for {fields['item']}", fields["quantity"], ""
     await i.response.send_message(
