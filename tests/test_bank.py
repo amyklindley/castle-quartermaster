@@ -183,3 +183,15 @@ def test_panels_split():
     for item in ui.BankPanel().children:
         both.add_item(item)
     assert len(both.to_components()[0]["components"]) == 4
+
+
+def test_donation_without_a_screenshot(env):
+    from test_tickets import forum_interaction, submit
+    i, forum = forum_interaction(FakeMember(ALICE))
+    f = ui.DonateForm(ALICE)
+    assert f.to_dict()["components"][1]["component"]["required"] is False
+    fill(f.what, "3 Spider Silk"); fill(f.character, "Moirin")
+    f.screenshot._values = []
+    submit(f, i)
+    assert "files" not in forum.create_thread.call_args.kwargs
+    assert env.by_thread(777).kind == "donate"

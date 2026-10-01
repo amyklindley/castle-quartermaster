@@ -284,7 +284,7 @@ async def setup(i: discord.Interaction, forum: discord.ForumChannel, crafter: di
         text = ui.PANEL_TEXT.replace("**Crafting & gathering requests.**", "**Castle requests.**").replace(
             "🌿 **Gathering**: you need materials farmed.\n",
             "🌿 **Gathering**: you need materials farmed.\n"
-            "📦 **Bank donation**: you're giving something to the guild bank. Include a screenshot so we can plan the space.\n"
+            "📦 **Bank donation**: you're giving something to the guild bank. A screenshot helps us plan the space, but it's optional.\n"
             "🏦 **Bank request**: you'd like something from the guild bank.\n")
         thread, problems = await post_panel(forum, s.panel_thread_id, ui.PANEL_TITLE, text, both)
         notes += problems

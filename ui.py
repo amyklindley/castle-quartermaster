@@ -289,9 +289,9 @@ class DonateForm(ui.Modal):
         lbl, self.what = _text("What are you donating?", paragraph=True, max_length=1000,
                                placeholder="e.g. 3 stacks of Silk, 12 Minor Healing Potions")
         self.add_item(lbl)
-        self.screenshot = ui.FileUpload(required=True, min_values=1, max_values=5)
-        self.add_item(ui.Label(text="Screenshot of what you're donating", component=self.screenshot,
-                               description="So we know how much bank space it needs."))
+        self.screenshot = ui.FileUpload(required=False, min_values=0, max_values=5)
+        self.add_item(ui.Label(text="Screenshot (optional)", component=self.screenshot,
+                               description="Helps us see how much bank space it needs."))
         lbl, self.character = _character_box(user_id)
         self.add_item(lbl)
 
@@ -437,7 +437,7 @@ PANEL_TEXT = (
 BANK_PANEL_TITLE = "🏦 Guild Bank"
 BANK_PANEL_TEXT = (
     "**Guild bank.** Pick a button and fill in the form; the bot opens a post here and pings the bankers.\n\n"
-    "📦 **Bank donation**: you're giving something to the guild bank. Include a screenshot so we can plan the space.\n"
+    "📦 **Bank donation**: you're giving something to the guild bank. A screenshot helps us plan the space, but it's optional.\n"
     "🏦 **Bank request**: you'd like something from the bank. Say what it's for and a banker will approve or deny it.\n\n"
     "What's in stock is right below this and updates itself. `/bank find <item>` checks one thing; "
     "`/bank history` shows recent movements."

@@ -10,7 +10,7 @@ press **Claim** and **Done** on the post, and the requester gets a DM at each st
 |---|---|---|---|
 | 🔨 Crafting | item, quantity, needed by, have the mats?, character | Castle Crafter | Claim → Crafted & delivered |
 | 🌿 Gathering | item(s), quantity, needed by, what it's for, character | Castle Gatherer | Claim → Gathered & delivered |
-| 📦 Bank donation | what you're donating, **screenshot** (required), character | bank role | Received |
+| 📦 Bank donation | what you're donating, screenshot (optional), character | bank role | Received |
 | 🏦 Bank request | what you're requesting, what it's for, character | bank role | Approve → Handed over, or Deny |
 
 Every ticket can also be cancelled (by the requester or staff, with an optional reason), unclaimed, and reopened.
