@@ -57,7 +57,7 @@ class Recipes:
         self.items: dict[str, dict] = {}     # norm(name) -> wiki item record
         self.sellers: dict[str, list[dict]] = {}  # norm(item) -> merchant NPC records that sell it
         self.npcs: dict[str, dict] = {}      # norm(name) -> NPC record
-        self.zones: set[str] = set()         # lower-case zone names (item pages list vendors under zone headers)
+        self.zones: dict[str, str] = {}      # lower-case zone name -> wiki spelling
 
     def load(self, recipes: list[dict]) -> None:
         by_name: dict[str, list[dict]] = {}
@@ -81,7 +81,19 @@ class Recipes:
                     sellers.setdefault(norm(it), []).append(n)
         self.sellers = sellers
         self.npcs = {norm(n["name"]): n for n in npcs if n.get("name")}
-        self.zones = {z.strip().lower() for n in npcs for z in n.get("zone", "").split(",") if z.strip()}
+        self.zones = {z.strip().lower(): z.strip() for n in npcs for z in n.get("zone", "").split(",") if z.strip()}
+
+    def zone_name(self, text: str) -> str:
+        """Tidy a typed location: a zone we know gets the wiki's spelling ("night harbor bank" ->
+        "Night Harbor bank"); anything else is left exactly as typed."""
+        text = " ".join(text.split())
+        low = text.lower()
+        for zone in sorted(self.zones, key=len, reverse=True):
+            at = low.find(zone)
+            if at >= 0:
+                return text[:at] + self.zones[zone] + text[at + len(zone):]
+        close = difflib.get_close_matches(low, self.zones.keys(), n=1, cutoff=0.85)
+        return self.zones[close[0]] if close else text
 
     def vendors(self, item: str, limit: int = 3) -> list[str]:
         """Who sells an item, as "Name (Zone: where they stand)". Empty if no vendor is known."""

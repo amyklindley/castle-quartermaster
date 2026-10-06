@@ -195,3 +195,26 @@ def test_donation_without_a_screenshot(env):
     submit(f, i)
     assert "files" not in forum.create_thread.call_args.kwargs
     assert env.by_thread(777).kind == "donate"
+
+
+def test_donation_carries_the_donor_location(env):
+    from test_tickets import forum_interaction, submit
+    ui.recipes.load_npcs([{"name": "A banker", "zone": "Night Harbor", "location": "", "sells": []},
+                          {"name": "A guard", "zone": "Faelindral", "location": "", "sells": []}])
+    z = ui.recipes.zone_name
+    assert z("night harbor") == "Night Harbor"
+    assert z("  night harbor,  by the bank ") == "Night Harbor, by the bank"
+    assert z("Nite Harbor") == "Night Harbor"            # small typo
+    assert z("my house") == "my house"                   # unknown places are left alone
+
+    i, forum = forum_interaction(FakeMember(ALICE))
+    f = ui.DonateForm(ALICE)
+    assert len(f.to_dict()["components"]) == 4
+    fill(f.what, "3 Spider Silk"); fill(f.location, "faelindral bank"); fill(f.character, "Moirin")
+    f.screenshot._values = []
+    submit(f, i)
+    kw = forum.create_thread.call_args.kwargs
+    assert kw["content"].endswith("· 📍 Faelindral bank")
+    t = env.by_thread(777)
+    assert t.fields["location"] == "Faelindral bank"
+    assert any(fl.name == "📍 Donor is at" and fl.value == "Faelindral bank" for fl in ui.embed(t).fields)

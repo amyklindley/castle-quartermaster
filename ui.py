@@ -161,6 +161,8 @@ def embed(t: Ticket) -> discord.Embed:
             e.add_field(name=f"📖 Recipe: {f.get('recipe_name', '')}", value=_clip(f["recipe"], 1000), inline=False)
     elif t.kind == "donate":
         e.add_field(name="Donating", value=_clip(f.get("what", "?"), 1000), inline=False)
+        if f.get("location"):
+            e.add_field(name="📍 Donor is at", value=_clip(f["location"], 200))
     else:
         e.add_field(name="Requesting", value=_clip(f.get("what", "?"), 1000), inline=False)
         if f.get("why"):
@@ -292,6 +294,9 @@ class DonateForm(ui.Modal):
         self.screenshot = ui.FileUpload(required=False, min_values=0, max_values=5)
         self.add_item(ui.Label(text="Screenshot (optional)", component=self.screenshot,
                                description="Helps us see how much bank space it needs."))
+        lbl, self.location = _text("Where are you in game?", max_length=80, placeholder="e.g. Night Harbor, by the bank",
+                                   description="Zone or city where a banker can meet you for the hand-off.")
+        self.add_item(lbl)
         lbl, self.character = _character_box(user_id)
         self.add_item(lbl)
 
@@ -305,7 +310,8 @@ class DonateForm(ui.Modal):
                 files.append(await a.to_file())
             except discord.HTTPException as e:
                 log.warning("screenshot download failed: %s", e)
-        await open_ticket(i, "donate", {"what": self.what.value.strip()}, character, files=files)
+        fields = {"what": self.what.value.strip(), "location": recipes.zone_name(self.location.value)}
+        await open_ticket(i, "donate", fields, character, files=files)
 
 
 class BankRequestForm(ui.Modal):
@@ -701,6 +707,8 @@ async def open_ticket(i: discord.Interaction, kind: str, fields: dict, character
     role = i.guild.get_role(role_id) if role_id else None
     k = KINDS[kind]
     content = f"{role.mention + ' ' if role else ''}New {k.name.lower()} request from {i.user.mention}"
+    if fields.get("location"):
+        content += f" · 📍 {_clip(fields['location'], 100)}"
     kwargs: dict = {"files": files} if files else {}
     try:
         posted = await forum.create_thread(
