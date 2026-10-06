@@ -167,6 +167,8 @@ def embed(t: Ticket) -> discord.Embed:
         e.add_field(name="Requesting", value=_clip(f.get("what", "?"), 1000), inline=False)
         if f.get("why"):
             e.add_field(name="What it's for", value=_clip(f["why"], 1000), inline=False)
+        if f.get("location"):
+            e.add_field(name="📍 Requester is at", value=_clip(f["location"], 200))
     e.add_field(name="Character", value=t.character or "?")
     e.add_field(name="Requested by", value=f"<@{t.requester_id}>")
     e.add_field(name="Status", value=status_line(t), inline=False)
@@ -322,13 +324,16 @@ class BankRequestForm(ui.Modal):
         lbl, self.why = _text("What's it for?", paragraph=True, max_length=500, required=False,
                               placeholder="Optional, but it helps the bankers say yes faster")
         self.add_item(lbl)
+        lbl, self.location = _text("Where are you in game?", max_length=80, placeholder="e.g. Night Harbor, by the bank",
+                                   description="Zone or city where a banker can meet you for the hand-off.")
+        self.add_item(lbl)
         lbl, self.character = _character_box(user_id)
         self.add_item(lbl)
 
     async def on_submit(self, i: discord.Interaction) -> None:
         character = self.character.value.strip()
         store.remember_character(i.user.id, character)
-        fields = {"what": self.what.value.strip()}
+        fields = {"what": self.what.value.strip(), "location": recipes.zone_name(self.location.value)}
         if self.why.value.strip():
             fields["why"] = self.why.value.strip()
         await open_ticket(i, "bank", fields, character)

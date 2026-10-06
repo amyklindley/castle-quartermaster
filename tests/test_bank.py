@@ -218,3 +218,17 @@ def test_donation_carries_the_donor_location(env):
     t = env.by_thread(777)
     assert t.fields["location"] == "Faelindral bank"
     assert any(fl.name == "📍 Donor is at" and fl.value == "Faelindral bank" for fl in ui.embed(t).fields)
+
+
+def test_bank_request_carries_the_requester_location(env):
+    from test_tickets import forum_interaction, submit
+    ui.recipes.load_npcs([{"name": "A banker", "zone": "Night Harbor", "location": "", "sells": []}])
+    i, forum = forum_interaction(FakeMember(ALICE))
+    f = ui.BankRequestForm(ALICE)
+    assert len(f.to_dict()["components"]) == 4
+    fill(f.what, "2 Spider Silk"); fill(f.why, ""); fill(f.location, "night harbor docks"); fill(f.character, "Moirin")
+    submit(f, i)
+    assert forum.create_thread.call_args.kwargs["content"].endswith("· 📍 Night Harbor docks")
+    t = env.by_thread(777)
+    assert t.fields["location"] == "Night Harbor docks"
+    assert any(fl.name == "📍 Requester is at" for fl in ui.embed(t).fields)
