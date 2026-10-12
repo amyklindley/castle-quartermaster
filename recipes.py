@@ -32,6 +32,18 @@ CATEGORIES = ["⚔️ Weapons", "🛡️ Armor", "💍 Jewelry", "🎒 Bags", "�
 log = logging.getLogger("castle.recipes")
 
 
+def looks_gutted(name: str, old: bytes, new: bytes) -> bool:
+    """A download that lost most of its entries (the scraper hit a reorganised wiki) must not replace a good
+    cache: the bot would quietly stop knowing recipes, items or vendors."""
+    try:
+        key = name.split(".")[0]
+        n_old = len(json.loads(old).get(key, []))
+        n_new = len(json.loads(new).get(key, []))
+    except (ValueError, AttributeError):
+        return True
+    return n_old >= 50 and n_new < 0.7 * n_old
+
+
 def norm(s: str) -> str:
     return re.sub(r"[^a-z0-9 ]+", "", s.lower().replace("'", "")).strip()
 
@@ -124,8 +136,12 @@ class Recipes:
                     path.parent.mkdir(exist_ok=True)
                     with urllib.request.urlopen(url, timeout=60) as resp:
                         body = resp.read()
-                    json.loads(body)  # don't replace a good cache with a broken download
-                    path.write_bytes(body)
+                    if path.exists() and looks_gutted(name, path.read_bytes(), body):
+                        log.warning("%s: the new copy has far fewer entries than ours; keeping ours", name)
+                        path.touch()  # try again tomorrow, not every hour
+                    else:
+                        json.loads(body)  # don't replace a good cache with a broken download
+                        path.write_bytes(body)
             except Exception as e:  # network trouble just means we keep yesterday's copy
                 log.warning("%s download failed: %s", name, e)
         try:
